@@ -1,4 +1,4 @@
-from sqlalchemy import UUID, String, Text, Integer, ForeignKey, DateTime
+from sqlalchemy import UUID, String, Text, Integer, ForeignKey, DateTime, ARRAY
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 from sqlalchemy.sql import func
 from .db import Base
@@ -26,7 +26,7 @@ class Product(Base):
         ForeignKey("categories.id"), 
         nullable=True
     )
-    price_cents: Mapped[int] = mapped_column(
+    price: Mapped[int] = mapped_column(
         Integer, 
         nullable=False
     )
@@ -34,6 +34,11 @@ class Product(Base):
         Integer, 
         nullable=False, 
         default=0
+    )
+    images: Mapped[list[str]] = mapped_column(
+        ARRAY(String), 
+        nullable=True, 
+        default=[]
     )
     created_at: Mapped[DateTime] = mapped_column(
         DateTime(timezone=True), 

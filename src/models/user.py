@@ -16,12 +16,12 @@ class User(Base):
     email: Mapped[str] = mapped_column(
         String(255), 
         unique=True, 
-        nullable=False,
+        nullable=True,
         index=True
     )
-    password_hash: Mapped[str] = mapped_column(
+    password: Mapped[str] = mapped_column(
         String(255), 
-        nullable=False
+        nullable=True
     )
     name: Mapped[str] = mapped_column(
         String(100), 

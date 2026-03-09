@@ -1,18 +1,16 @@
 from fastapi import FastAPI, HTTPException, Depends
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.staticfiles import StaticFiles
 from contextlib import asynccontextmanager
 import logging
+import os
 from src.api import register_routes
 from src.models.db import db_manager, get_db
 from core.config import settings
+from core.logging_config import setup_logging
 
-# Configure logging
-logging.basicConfig(
-    level=logging.INFO,
-    format="%(asctime)s - %(name)s - %(levelname)s - %(message)s"
-)
+setup_logging()
 logger = logging.getLogger(__name__)
-
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
@@ -59,6 +57,14 @@ app.add_middleware(
 )
 
 register_routes(app)
+
+# Mount static files
+public_dir = os.path.join(os.path.dirname(__file__), "public")
+if os.path.exists(public_dir):
+    app.mount("/static", StaticFiles(directory=public_dir), name="static")
+    logger.info(f"✅ Static files mounted from: {public_dir}")
+else:
+    logger.warning(f"⚠️ Public directory not found: {public_dir}")
 
 @app.get("/")
 async def root():
