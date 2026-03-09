@@ -208,5 +208,7 @@ logs/
 temp/
 tmp/
 
+/public/
+
 # Alembic
 !alembic/versions/__init__.py
