@@ -6,6 +6,7 @@ import logging
 
 from . import models
 from src.models.product import Product
+from src.models.category import Category
 
 logger = logging.getLogger(__name__)
 
@@ -40,6 +41,7 @@ def get_products(
     skip: int = 0, 
     limit: int = 100,
     category_id: Optional[int] = None,
+    category_slug: Optional[str] = None,
     min_price: Optional[int] = None,
     max_price: Optional[int] = None,
     in_stock: Optional[bool] = None,
@@ -47,7 +49,7 @@ def get_products(
 ) -> List[Product]:
     """Get products with optional filtering, search, and pagination"""
     try:
-        query = db.query(Product)
+        query = db.query(Product).options(joinedload(Product.category))
         
         # Apply search filter
         if search is not None and search != "":
@@ -57,8 +59,19 @@ def get_products(
             )
         
         # Apply filters
-        if category_id is not None:
+        if category_id is not None :
             query = query.filter(Product.category_id == category_id)
+        
+        if category_slug is not None and category_slug != "":
+            # Find the category by slug
+            category = db.query(Category).filter(Category.slug == category_slug).first()
+            if category:
+                # Get all descendant category IDs recursively using classmethod
+                descendant_ids = Category.get_all_descendant_ids(db, category.id)
+                # Include the parent category ID and all descendant IDs
+                all_category_ids = [category.id] + descendant_ids
+                # Filter products by all category IDs in the hierarchy
+                query = query.filter(Product.category_id.in_(all_category_ids))
         
         if min_price is not None:
             query = query.filter(Product.price >= min_price)

@@ -55,5 +55,18 @@ class Category(Base):
         db.flush()
         return category
 
+    @classmethod
+    def get_all_descendant_ids(cls, db: Session, category_id: int) -> list[int]:
+        """Get all descendant category IDs recursively"""
+        category = db.query(cls).filter(cls.id == category_id).first()
+        if not category:
+            return []
+        
+        descendant_ids = []
+        for child in category.children:
+            descendant_ids.append(child.id)
+            descendant_ids.extend(cls.get_all_descendant_ids(db, child.id))
+        return descendant_ids
+
     def __repr__(self) -> str:
         return f"<Category(id={self.id}, name={self.name}, parent_id={self.parent_id})>"

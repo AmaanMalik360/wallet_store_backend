@@ -59,6 +59,7 @@ def get_categories(db: Session, slug: Optional[str] = None, skip: int = 0, limit
                 raise HTTPException(status_code=404, detail="Category not found")
             
             result = [build_category_hierarchy(category)]
+            result = result[0].children
             logger.info(f"Retrieved category with slug: {slug}")
         else:
             # Get paginated parent categories (categories with no parent)
