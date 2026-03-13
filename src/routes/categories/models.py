@@ -5,6 +5,7 @@ from datetime import datetime
 
 class CategoryBase(BaseModel):
     name: str
+    slug: str
     parent_id: Optional[int] = None
 
 

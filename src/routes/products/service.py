@@ -90,6 +90,8 @@ def get_products(
         
         search_info = f" (search='{search}')" if search else ""
         logger.info(f"Retrieved {len(products)} products (skip={skip}, limit={limit}){search_info}")
+        if products:
+            logger.info(f"First 3 products: {products[:3]}")
         return products
         
     except Exception as e:
@@ -111,19 +113,18 @@ def get_product_by_id(db: Session, product_id: UUID) -> Product:
     return product
 
 
-def update_product(db: Session, product_id: UUID, product_update: models.ProductUpdate) -> Product:
+def update_product(db: Session, product_id: UUID, update_data: dict) -> Product:
     try:
         product = get_product_by_id(db, product_id)
         
-        update_data = product_update.model_dump(exclude_unset=True)
-        
+        # Update fields based on provided data
         for field, value in update_data.items():
             setattr(product, field, value)
         
         db.commit()
         db.refresh(product)
         
-        logger.info(f"Updated product {product_id}")
+        logger.info(f"Updated product {product_id} with fields: {list(update_data.keys())}")
         return product
         
     except HTTPException:

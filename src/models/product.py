@@ -70,4 +70,4 @@ class Product(Base):
     )
 
     def __repr__(self) -> str:
-        return f"<Product(id={self.id}, title={self.title[:50]}, price_cents={self.price_cents})>"
+        return f"<Product(id={self.id}, title={self.title[:50]}, price={self.price}), category={self.category}>"

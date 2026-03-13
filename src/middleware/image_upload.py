@@ -3,10 +3,9 @@ import uuid
 from typing import List, Optional
 from fastapi import UploadFile, HTTPException
 from PIL import Image
+import io # Import io for PIL validation
 import logging
-
 logger = logging.getLogger(__name__)
-
 
 class ImageUploadMiddleware:
     """Reusable middleware for handling image uploads"""
@@ -157,5 +156,3 @@ class ImageUploadMiddleware:
             return False
 
 
-# Import io for PIL validation
-import io

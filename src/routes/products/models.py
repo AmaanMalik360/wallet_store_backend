@@ -2,6 +2,8 @@ from pydantic import BaseModel, Field
 from typing import Optional, List
 from datetime import datetime
 from uuid import UUID
+from fastapi import UploadFile
+from src.routes.categories.models import CategoryBase
 
 
 class ProductBase(BaseModel):
@@ -24,6 +26,7 @@ class ProductUpdate(BaseModel):
     price: Optional[int] = Field(None, gt=0, description="Price in cents")
     stock_quantity: Optional[int] = Field(None, ge=0, description="Number of items in stock")
     images: Optional[List[str]] = None
+    new_images: Optional[List[UploadFile]] = Field(default_factory=list, description="New image files to upload")
 
 
 class ProductResponse(ProductBase):
@@ -36,7 +39,7 @@ class ProductResponse(ProductBase):
 
 
 class ProductWithCategory(ProductResponse):
-    category: Optional[dict] = None
+    category: CategoryBase
     
     class Config:
         from_attributes = True
