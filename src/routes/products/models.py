@@ -43,3 +43,10 @@ class ProductWithCategory(ProductResponse):
     
     class Config:
         from_attributes = True
+
+
+class PaginatedProductsResponse(BaseModel):
+    data: List[ProductWithCategory]
+    total: int
+    skip: int
+    limit: int

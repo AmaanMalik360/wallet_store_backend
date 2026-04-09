@@ -62,36 +62,42 @@ async def create_product(
     except Exception as e:
         raise HTTPException(status_code=500, detail="Failed to create product")
 
-@router.get("/", response_model=List[models.ProductWithCategory])
+@router.get("/", response_model=models.PaginatedProductsResponse)
 def get_products(
     db: DbSession,
-    skip: int = Query(0, ge=0, description="Number of products to skip"),
-    limit: int = Query(100, ge=1, le=1000, description="Maximum number of products to return"),
-    category_id: Optional[int] = Query(None, description="Filter by category ID"),
-    category_slug: Optional[str] = Query(None, description="Filter by category slug"),
-    min_price: Optional[int] = Query(None, ge=0, description="Minimum price in cents"),
-    max_price: Optional[int] = Query(None, ge=0, description="Maximum price in cents"),
-    in_stock: Optional[bool] = Query(None, description="Filter by stock availability"),
-    search: Optional[str] = Query(None, min_length=1, description="Search query to filter products by title or description")
+    skip: int = Query(0, ge=0),
+    limit: int = Query(100, ge=1, le=1000),
+    category_ids: Optional[List[int]] = Query(None, description="Filter by multiple category IDs"),
+    category_slug: Optional[str] = Query(None),
+    min_price: Optional[int] = Query(None, ge=0),
+    max_price: Optional[int] = Query(None, ge=0),
+    in_stock: Optional[bool] = Query(None),
+    search: Optional[str] = Query(None, min_length=1),
+    sort_by: Optional[str] = Query(None, description="featured | price-low | price-high | newest | name"),
+    attribute_value_ids: Optional[List[int]] = Query(None, description="Filter by attribute value IDs")
 ):
     """
     Get products with optional filtering and search:
     - Pagination: skip and limit
-    - Category filter: category_id
+    - Category filter: category_ids (multiple IDs) or category_slug
     - Price range: min_price and max_price
     - Stock filter: in_stock (True for in stock, False for out of stock)
     - Search: search query to filter by title or description
+    - Sort: sort_by (featured, price-low, price-high, newest, name)
+    - Attributes: attribute_value_ids (filter by attribute values)
     """
     return service.get_products(
         db, 
         skip=skip, 
         limit=limit, 
-        category_id=category_id,
+        category_ids=category_ids,
         category_slug=category_slug,
         min_price=min_price,
         max_price=max_price,
         in_stock=in_stock,
-        search=search
+        search=search,
+        sort_by=sort_by,
+        attribute_value_ids=attribute_value_ids
     )
 
 @router.get("/{product_id}", response_model=models.ProductWithCategory)

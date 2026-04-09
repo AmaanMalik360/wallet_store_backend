@@ -59,8 +59,8 @@ def get_logging_config() -> dict:
                 "propagate": False,
             },
             "sqlalchemy.engine": {
-                "handlers": ["console", "file"],
-                "level": logging.INFO,
+                "handlers": [],
+                "level": logging.WARNING,
                 "propagate": False,
             },
         },

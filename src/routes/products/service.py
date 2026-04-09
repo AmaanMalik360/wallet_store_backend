@@ -1,12 +1,14 @@
-from typing import List, Optional
+from typing import List, Optional, Dict, Any
 from uuid import UUID
 from sqlalchemy.orm import Session, joinedload
+from sqlalchemy import func
 from fastapi import HTTPException
 import logging
 
 from . import models
 from src.models.product import Product
 from src.models.category import Category
+from src.models.attribute import ProductAttributeValue, AttributeValue
 
 logger = logging.getLogger(__name__)
 
@@ -35,69 +37,105 @@ def create_product(db: Session, product: models.ProductCreate, image_paths: Opti
         db.rollback()
         raise HTTPException(status_code=500, detail="Failed to create product")
 
-
 def get_products(
-    db: Session, 
-    skip: int = 0, 
+    db: Session,
+    skip: int = 0,
     limit: int = 100,
-    category_id: Optional[int] = None,
+    category_ids: Optional[List[int]] = None,
     category_slug: Optional[str] = None,
     min_price: Optional[int] = None,
     max_price: Optional[int] = None,
     in_stock: Optional[bool] = None,
-    search: Optional[str] = None
-) -> List[Product]:
-    """Get products with optional filtering, search, and pagination"""
+    search: Optional[str] = None,
+    sort_by: Optional[str] = None,
+    attribute_value_ids: Optional[List[int]] = None
+) -> Dict[str, Any]:
     try:
-        query = db.query(Product).options(joinedload(Product.category))
-        
-        # Apply search filter
-        if search is not None and search != "":
+        query = db.query(Product).options(
+            joinedload(Product.category),
+            joinedload(Product.attribute_values)
+        )
+
+        if search:
             query = query.filter(
-                Product.title.ilike(f"%{search}%") | 
+                Product.title.ilike(f"%{search}%") |
                 Product.description.ilike(f"%{search}%")
             )
-        
-        # Apply filters
-        if category_id is not None :
-            query = query.filter(Product.category_id == category_id)
-        
-        if category_slug is not None and category_slug != "":
-            # Find the category by slug
+
+        # Multiple explicit category IDs (from subcategory filter)
+        if category_ids:
+            all_ids: set[int] = set()
+            for cid in category_ids:
+                all_ids.add(cid)
+                all_ids.update(Category.get_all_descendant_ids(db, cid))
+            query = query.filter(Product.category_id.in_(all_ids))
+
+        # Slug-based filter (page-level, broader scope)
+        elif category_slug:
             category = db.query(Category).filter(Category.slug == category_slug).first()
             if category:
-                # Get all descendant category IDs recursively using classmethod
                 descendant_ids = Category.get_all_descendant_ids(db, category.id)
-                # Include the parent category ID and all descendant IDs
-                all_category_ids = [category.id] + descendant_ids
-                # Filter products by all category IDs in the hierarchy
-                query = query.filter(Product.category_id.in_(all_category_ids))
-        
+                query = query.filter(Product.category_id.in_([category.id] + descendant_ids))
+
         if min_price is not None:
             query = query.filter(Product.price >= min_price)
-        
         if max_price is not None:
             query = query.filter(Product.price <= max_price)
-        
         if in_stock is not None:
-            if in_stock:
-                query = query.filter(Product.stock_quantity > 0)
-            else:
-                query = query.filter(Product.stock_quantity == 0)
-        
-        # Apply pagination
+            query = query.filter(
+                Product.stock_quantity > 0 if in_stock else Product.stock_quantity == 0
+            )
+
+        # Attribute filtering with AND semantics across different attributes
+        if attribute_value_ids:
+            # Group attribute value IDs by their attribute_id for proper OR within same attribute, AND across attributes
+            value_to_attr = {}
+            attr_values = db.query(AttributeValue).filter(
+                AttributeValue.id.in_(attribute_value_ids)
+            ).all()
+            
+            for av in attr_values:
+                if av.attribute_id not in value_to_attr:
+                    value_to_attr[av.attribute_id] = []
+                value_to_attr[av.attribute_id].append(av.id)
+            
+            # For each attribute, product must have at least one of the selected values (OR within attribute)
+            # Across attributes, product must match all (AND across attributes)
+            for attr_id, val_ids in value_to_attr.items():
+                query = query.filter(
+                    Product.id.in_(
+                        db.query(ProductAttributeValue.product_id)
+                        .filter(ProductAttributeValue.attribute_value_id.in_(val_ids))
+                    )
+                )
+
+        # Sorting
+        if sort_by == "price-low":
+            query = query.order_by(Product.price.asc())
+        elif sort_by == "price-high":
+            query = query.order_by(Product.price.desc())
+        elif sort_by == "newest":
+            query = query.order_by(Product.created_at.desc())
+        elif sort_by == "name":
+            query = query.order_by(Product.title.asc())
+        else:  # featured / default
+            query = query.order_by(Product.created_at.desc())
+
+        # Get total count after all filters and sorting, before pagination
+        total = query.count()
+
         products = query.offset(skip).limit(limit).all()
-        
-        search_info = f" (search='{search}')" if search else ""
-        logger.info(f"Retrieved {len(products)} products (skip={skip}, limit={limit}){search_info}")
-        if products:
-            logger.info(f"First 3 products: {products[:3]}")
-        return products
-        
+        logger.info(f"Retrieved {len(products)} products out of {total} total")
+        return {
+            "data": products,
+            "total": total,
+            "skip": skip,
+            "limit": limit
+        }
+
     except Exception as e:
         logger.error(f"Failed to retrieve products. Error: {str(e)}")
         raise HTTPException(status_code=500, detail="Failed to retrieve products")
-
 
 def get_product_by_id(db: Session, product_id: UUID) -> Product:
     """Get a specific product by ID with category information"""

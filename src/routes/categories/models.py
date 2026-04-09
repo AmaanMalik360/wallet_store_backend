@@ -3,6 +3,16 @@ from typing import Optional, List
 from datetime import datetime
 
 
+class AttributeValueResponse(BaseModel):
+    id: int
+    value: str
+
+
+class AttributeFilterResponse(BaseModel):
+    name: str
+    values: List[AttributeValueResponse]
+
+
 class CategoryBase(BaseModel):
     name: str
     slug: str
@@ -22,6 +32,7 @@ class CategoryResponse(CategoryBase):
     id: int
     slug: str
     children: List['CategoryResponse'] = []
+    filterable_attributes: List[AttributeFilterResponse] = []
 
     class Config:
         from_attributes = True

@@ -28,7 +28,7 @@ class DatabaseManager:
                 max_overflow=settings.db_max_overflow,
                 pool_timeout=settings.db_pool_timeout,
                 pool_recycle=settings.db_pool_recycle,
-                echo=settings.debug
+                echo=False
             )
             logger.info("Database engine created successfully")
         return self._engine

@@ -5,20 +5,30 @@ import logging
 
 from . import models
 from src.models.category import Category
+from src.routes.attributes.attribute_service import get_attributes_for_category
 
 logger = logging.getLogger(__name__)
 
 
-def build_category_hierarchy(category: Category) -> models.CategoryResponse:
+def build_category_hierarchy(
+    category: Category,
+    db: Optional[Session] = None,
+    include_attributes: bool = False
+) -> models.CategoryResponse:
     """Recursively build category hierarchy with children"""
-    children = [build_category_hierarchy(child) for child in category.children]
+    children = [build_category_hierarchy(child, db=db, include_attributes=include_attributes) for child in category.children]
+    
+    filterable_attributes = []
+    if include_attributes and db is not None:
+        filterable_attributes = get_attributes_for_category(db, category.slug)
     
     return models.CategoryResponse(
         id=category.id,
         name=category.name,
         slug=category.slug,
         parent_id=category.parent_id,
-        children=children
+        children=children,
+        filterable_attributes=filterable_attributes
     )
 
 
@@ -58,7 +68,7 @@ def get_categories(db: Session, slug: Optional[str] = None, skip: int = 0, limit
             if not category:
                 raise HTTPException(status_code=404, detail="Category not found")
             
-            result = [build_category_hierarchy(category)]
+            result = [build_category_hierarchy(category, db=db, include_attributes=True)]
             result = result[0].children
             logger.info(f"Retrieved category with slug: {slug}")
         else:
@@ -66,7 +76,7 @@ def get_categories(db: Session, slug: Optional[str] = None, skip: int = 0, limit
             parent_categories = db.query(Category).filter(
                 Category.parent_id.is_(None)
             ).offset(skip).limit(limit).all()
-            result = [build_category_hierarchy(category) for category in parent_categories]
+            result = [build_category_hierarchy(category, db=db, include_attributes=True) for category in parent_categories]
             logger.info(f"Retrieved {len(parent_categories)} parent categories (skip={skip}, limit={limit})")
         
         return result

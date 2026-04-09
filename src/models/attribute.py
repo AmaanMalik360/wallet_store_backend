@@ -11,6 +11,7 @@ class Attribute(Base):
         Integer, 
         primary_key=True
     )
+    # Attribute name (e.g., "Color", "Size", "Material")
     name: Mapped[str] = mapped_column(
         String(50), 
         nullable=False, 
@@ -35,11 +36,13 @@ class AttributeValue(Base):
         Integer, 
         primary_key=True
     )
+    # Attribute ID (foreign key to attributes table)
     attribute_id: Mapped[int] = mapped_column(
         Integer, 
         ForeignKey("attributes.id"), 
         nullable=False
     )
+    # Attribute value (e.g., "Red", "Blue", "Small", "Large", "Cotton", "Leather")
     value: Mapped[str] = mapped_column(
         String(100), 
         nullable=False
@@ -67,6 +70,7 @@ class ProductAttributeValue(Base):
         ForeignKey("products.id", ondelete="CASCADE"), 
         primary_key=True
     )
+    # Attribute value ID (foreign key to attribute_values table)
     attribute_value_id: Mapped[int] = mapped_column(
         Integer, 
         ForeignKey("attribute_values.id"), 
