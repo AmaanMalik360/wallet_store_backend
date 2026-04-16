@@ -1,6 +1,7 @@
 from pydantic import BaseModel
 from typing import Optional, List
 from datetime import datetime
+from src.routes.models import ApiResponse
 
 
 class AttributeValueResponse(BaseModel):
@@ -15,12 +16,12 @@ class AttributeFilterResponse(BaseModel):
 
 class CategoryBase(BaseModel):
     name: str
-    slug: str
     parent_id: Optional[int] = None
 
 
-class CategoryCreate(CategoryBase):
-    pass
+class CategoryCreate(BaseModel):
+    name: str
+    parent_id: Optional[int] = None
 
 
 class CategoryUpdate(BaseModel):
@@ -28,15 +29,26 @@ class CategoryUpdate(BaseModel):
     parent_id: Optional[int] = None
 
 
-class CategoryResponse(CategoryBase):
+class CategoryData(BaseModel):
     id: int
+    name: str
     slug: str
-    children: List['CategoryResponse'] = []
+    parent_id: Optional[int] = None
+    children: List['CategoryData'] = []
     filterable_attributes: List[AttributeFilterResponse] = []
 
     class Config:
         from_attributes = True
 
 
+# Specific response types
+class CategoryResponse(ApiResponse[CategoryData]):
+    pass
+
+
+class CategoriesListResponse(ApiResponse[List[CategoryData]]):
+    pass
+
+
 # Update forward reference for recursive model
-CategoryResponse.model_rebuild()
+CategoryData.model_rebuild()

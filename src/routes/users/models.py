@@ -2,6 +2,7 @@ from pydantic import BaseModel, EmailStr
 from typing import Optional
 from datetime import datetime
 from uuid import UUID
+from src.routes.models import ApiResponse
 
 
 class UserBase(BaseModel):
@@ -27,3 +28,12 @@ class UserResponse(UserBase):
 
     class Config:
         from_attributes = True
+
+
+# Response wrapper types using shared ApiResponse
+class UserResponseWrapper(ApiResponse[UserResponse]):
+    pass
+
+
+class UsersListResponseWrapper(ApiResponse[list[UserResponse]]):
+    pass

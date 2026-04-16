@@ -5,7 +5,7 @@ import logging
 
 from . import models
 from src.models.category import Category
-from src.routes.attributes.attribute_service import get_attributes_for_category
+from src.routes.attributes.service import get_attributes_for_category
 
 logger = logging.getLogger(__name__)
 
@@ -14,15 +14,16 @@ def build_category_hierarchy(
     category: Category,
     db: Optional[Session] = None,
     include_attributes: bool = False
-) -> models.CategoryResponse:
+) -> models.CategoryData:
     """Recursively build category hierarchy with children"""
     children = [build_category_hierarchy(child, db=db, include_attributes=include_attributes) for child in category.children]
     
+    # Get filterable attributes for this category (returns list of dicts with name and values)
     filterable_attributes = []
     if include_attributes and db is not None:
         filterable_attributes = get_attributes_for_category(db, category.slug)
     
-    return models.CategoryResponse(
+    return models.CategoryData(
         id=category.id,
         name=category.name,
         slug=category.slug,
@@ -32,7 +33,7 @@ def build_category_hierarchy(
     )
 
 
-def create_category(db: Session, category: models.CategoryCreate) -> Category:
+def create_category(db: Session, category: models.CategoryCreate) -> models.CategoryData:
     try:
         # Check if category name already exists
         existing_category = db.query(Category).filter(Category.name == category.name).first()
@@ -49,7 +50,7 @@ def create_category(db: Session, category: models.CategoryCreate) -> Category:
         db.refresh(db_category)
         
         logger.info(f"Created new category: {category.name}")
-        return db_category
+        return build_category_hierarchy(db_category, db=db, include_attributes=False)
         
     except HTTPException:
         raise
@@ -59,7 +60,7 @@ def create_category(db: Session, category: models.CategoryCreate) -> Category:
         raise HTTPException(status_code=500, detail="Failed to create category")
 
 
-def get_categories(db: Session, slug: Optional[str] = None, skip: int = 0, limit: int = 100) -> List[models.CategoryResponse]:
+def get_categories(db: Session, slug: Optional[str] = None, skip: int = 0, limit: int = 100) -> List[models.CategoryData]:
     """Get categories - all parent categories with children if no slug, or specific category with children if slug provided"""
     try:
         if slug:
@@ -97,7 +98,7 @@ def get_category_by_id(db: Session, category_id: int) -> Category:
     return category
 
 
-def update_category(db: Session, category_id: int, category_update: models.CategoryUpdate) -> Category:
+def update_category(db: Session, category_id: int, category_update: models.CategoryUpdate) -> models.CategoryData:
     try:
         category = get_category_by_id(db, category_id)
         
@@ -126,7 +127,7 @@ def update_category(db: Session, category_id: int, category_update: models.Categ
         db.refresh(category)
         
         logger.info(f"Updated category {category_id}")
-        return category
+        return build_category_hierarchy(category, db=db, include_attributes=False)
         
     except HTTPException:
         raise

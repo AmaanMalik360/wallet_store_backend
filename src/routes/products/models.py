@@ -4,6 +4,7 @@ from datetime import datetime
 from uuid import UUID
 from fastapi import UploadFile
 from src.routes.categories.models import CategoryBase
+from src.routes.models import ApiResponse
 
 
 class ProductBase(BaseModel):
@@ -50,3 +51,16 @@ class PaginatedProductsResponse(BaseModel):
     total: int
     skip: int
     limit: int
+
+
+# Response wrapper types using shared ApiResponse
+class ProductResponseWrapper(ApiResponse[ProductResponse]):
+    pass
+
+
+class ProductWithCategoryResponseWrapper(ApiResponse[ProductWithCategory]):
+    pass
+
+
+class PaginatedProductsResponseWrapper(ApiResponse[PaginatedProductsResponse]):
+    pass

@@ -18,7 +18,7 @@ router = APIRouter(
 # Initialize image upload middleware for products
 image_upload = ImageUploadMiddleware("public/images/products")
 
-@router.post("/", response_model=models.ProductResponse, status_code=status.HTTP_201_CREATED)
+@router.post("/", response_model=models.ProductResponseWrapper, status_code=status.HTTP_201_CREATED)
 async def create_product(
     db: DbSession,
     title: str = Form(...),
@@ -30,7 +30,7 @@ async def create_product(
 ):
     """
     Create a new product with optional image uploads
-    
+
     Args:
         title: Product title
         description: Product description
@@ -44,7 +44,7 @@ async def create_product(
         image_paths = []
         if images:
             image_paths = await image_upload.save_multiple_images(images)
-        
+
         # Create product data
         product_data = models.ProductCreate(
             title=title,
@@ -54,15 +54,20 @@ async def create_product(
             stock_quantity=stock_quantity,
             images=image_paths
         )
-        
-        return service.create_product(db, product_data, image_paths)
-        
+
+        product = service.create_product(db, product_data, image_paths)
+        return models.ProductResponseWrapper(
+            success=True,
+            message="Product created successfully",
+            data=product
+        )
+
     except HTTPException:
         raise
     except Exception as e:
         raise HTTPException(status_code=500, detail="Failed to create product")
 
-@router.get("/", response_model=models.PaginatedProductsResponse)
+@router.get("/", response_model=models.PaginatedProductsResponseWrapper)
 def get_products(
     db: DbSession,
     skip: int = Query(0, ge=0),
@@ -86,10 +91,10 @@ def get_products(
     - Sort: sort_by (featured, price-low, price-high, newest, name)
     - Attributes: attribute_value_ids (filter by attribute values)
     """
-    return service.get_products(
-        db, 
-        skip=skip, 
-        limit=limit, 
+    products = service.get_products(
+        db,
+        skip=skip,
+        limit=limit,
         category_ids=category_ids,
         category_slug=category_slug,
         min_price=min_price,
@@ -99,13 +104,23 @@ def get_products(
         sort_by=sort_by,
         attribute_value_ids=attribute_value_ids
     )
+    return models.PaginatedProductsResponseWrapper(
+        success=True,
+        message="Products retrieved successfully",
+        data=products
+    )
 
-@router.get("/{product_id}", response_model=models.ProductWithCategory)
+@router.get("/{product_id}", response_model=models.ProductWithCategoryResponseWrapper)
 def get_product(product_id: UUID, db: DbSession):
     """Get a specific product by ID with category information"""
-    return service.get_product_by_id(db, product_id)
+    product = service.get_product_by_id(db, product_id)
+    return models.ProductWithCategoryResponseWrapper(
+        success=True,
+        message="Product retrieved successfully",
+        data=product
+    )
 
-@router.patch("/{product_id}", response_model=models.ProductResponse)
+@router.patch("/{product_id}", response_model=models.ProductResponseWrapper)
 async def update_product(
     product_id: UUID,
     db: DbSession,
@@ -119,7 +134,7 @@ async def update_product(
 ):
     """
     Update a product with optional new image uploads
-    
+
     Args:
         product_id: Product ID to update
         title: Product title
@@ -132,10 +147,10 @@ async def update_product(
     """
     try:
         import json
-        
+
         # Build update data directly
         update_data = {}
-        
+
         # Add text fields if provided
         if title is not None:
             update_data['title'] = title
@@ -147,7 +162,7 @@ async def update_product(
             update_data['price'] = price
         if stock_quantity is not None:
             update_data['stock_quantity'] = stock_quantity
-        
+
         # Handle image updates
         if images is not None or new_images:
             # Parse existing images from JSON string
@@ -161,22 +176,27 @@ async def update_product(
                 except json.JSONDecodeError:
                     raise HTTPException(status_code=400, detail="Invalid images JSON format")
             elif new_images:
-                # If no existing images provided but new images are uploaded, 
+                # If no existing images provided but new images are uploaded,
                 # get current product images to preserve them
                 current_product = service.get_product_by_id(db, product_id)
                 existing_images = current_product.images or []
-            
+
             # Handle new image uploads
             new_image_paths = []
             if new_images:
                 new_image_paths = await image_upload.save_multiple_images(new_images)
-            
+
             # Combine existing images with new image paths
             final_images = existing_images + new_image_paths if existing_images else new_image_paths
             update_data['images'] = final_images
-        
-        return service.update_product(db, product_id, update_data)
-        
+
+        product = service.update_product(db, product_id, update_data)
+        return models.ProductResponseWrapper(
+            success=True,
+            message="Product updated successfully",
+            data=product
+        )
+
     except HTTPException:
         raise
     except Exception as e:

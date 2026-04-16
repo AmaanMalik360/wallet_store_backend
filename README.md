@@ -1,5 +1,5 @@
 
-Paste the following into [backend/README.md](cci:7://file:///c:/Users/Baller/Desktop/hub.com/wallet-store-lovable-version/backend/README.md:0:0-0:0):
+Paste the following into [backend/README.md]:
 
 ```markdown
 # Wallet Store Backend (FastAPI)
@@ -14,16 +14,16 @@ FastAPI backend for the Wallet Store application using:
 
 ## Requirements
 
-- **Python**: `>= 3.12` (see [pyproject.toml](cci:7://file:///c:/Users/Baller/Desktop/hub.com/wallet-store-lovable-version/backend/pyproject.toml:0:0-0:0))
+- **Python**: `>= 3.12` (see [pyproject.toml]
 - **PostgreSQL**: running locally or reachable over the network
 
 ## Project Structure (high level)
 
-- **[main.py](cci:7://file:///c:/Users/Baller/Desktop/hub.com/wallet-store-lovable-version/backend/main.py:0:0-0:0)**
+- **[main.py]**
   - Creates the FastAPI app
   - Loads settings from `core/config.py`
   - Initializes DB connection on startup and creates tables (`db_manager.create_tables()`)
-  - Registers API routes via [src/api.py](cci:7://file:///c:/Users/Baller/Desktop/hub.com/wallet-store-lovable-version/backend/src/api.py:0:0-0:0)
+  - Registers API routes via [src/api.py]
 - **`core/config.py`**
   - Central configuration using `pydantic-settings`
   - Reads `.env` and exposes `settings.database_url` / `settings.async_database_url`
@@ -31,7 +31,7 @@ FastAPI backend for the Wallet Store application using:
   - SQLAlchemy engine/session factory
   - `get_db()` dependency for request-scoped sessions
 - **`alembic/`**
-  - Alembic configuration (configured to use `settings.database_url` in [alembic/env.py](cci:7://file:///c:/Users/Baller/Desktop/hub.com/wallet-store-lovable-version/backend/alembic/env.py:0:0-0:0))
+  - Alembic configuration (configured to use `settings.database_url` in [alembic/env.py]
 - **`seeders/`**
   - Seeder runner + individual seeders (e.g. `category_seeder.py`)
 
@@ -45,15 +45,15 @@ uv sync
 
 ### 2) Configure environment variables
 
-Create a `.env` file in the project root (same level as [main.py](cci:7://file:///c:/Users/Baller/Desktop/hub.com/wallet-store-lovable-version/backend/main.py:0:0-0:0)).
+Create a `.env` file in the project root (same level as [main.py]).
 
-You can start from [.env.example](cci:7://file:///c:/Users/Baller/Desktop/hub.com/wallet-store-lovable-version/backend/.env.example:0:0-0:0):
+You can start from [.env.example]:
 
 ```bash
 copy .env.example .env
 ```
 
-Key variables (see [.env.example](cci:7://file:///c:/Users/Baller/Desktop/hub.com/wallet-store-lovable-version/backend/.env.example:0:0-0:0) and `core/config.py`):
+Key variables (see [.env.example] and `core/config.py`):
 
 ```env
 DB_HOSTNAME=localhost
@@ -103,7 +103,7 @@ uv run python -m uvicorn main:app --host 0.0.0.0 --port 8000
 uv run python -m uvicorn main:app --host 0.0.0.0 --port 8000 --workers 4
 ```
 
-On startup, [main.py](cci:7://file:///c:/Users/Baller/Desktop/hub.com/wallet-store-lovable-version/backend/main.py:0:0-0:0) will:
+On startup, [main.py] will:
 
 - Validate DB connectivity (`db_manager.test_connection()`)
 - Create tables (`db_manager.create_tables()`)
@@ -115,7 +115,7 @@ Useful endpoints:
 
 ## API Routes
 
-Routes are registered in [src/api.py](cci:7://file:///c:/Users/Baller/Desktop/hub.com/wallet-store-lovable-version/backend/src/api.py:0:0-0:0).
+Routes are registered in [src/api.py].
 
 ### Users
 
@@ -132,7 +132,7 @@ Base path: [/users](cci:9://file:///users:0:0-0:0)
 
 This project supports a **manual-first** migration workflow (similar to Sequelize): create a revision, then edit `upgrade()` / `downgrade()`.
 
-Full reference: [MIGRATION_COMMANDS.md](cci:7://file:///c:/Users/Baller/Desktop/hub.com/wallet-store-lovable-version/backend/MIGRATION_COMMANDS.md:0:0-0:0).
+Full reference: [MIGRATION_COMMANDS.md].
 
 Common commands:
 
@@ -152,7 +152,7 @@ alembic downgrade -1
 
 Alembic is configured to use the database URL from settings:
 
-- [alembic/env.py](cci:7://file:///c:/Users/Baller/Desktop/hub.com/wallet-store-lovable-version/backend/alembic/env.py:0:0-0:0) imports `settings` and sets `sqlalchemy.url` to `settings.database_url`.
+- [alembic/env.py] imports `settings` and sets `sqlalchemy.url` to `settings.database_url`.
 
 ## Seeding Data
 
@@ -191,7 +191,7 @@ uv run python seeders/run_seeders.py category_seeder.py
 ### Migrations don’t run / env not loaded
 
 - Ensure `.env` exists at the project root
-- [alembic/env.py](cci:7://file:///c:/Users/Baller/Desktop/hub.com/wallet-store-lovable-version/backend/alembic/env.py:0:0-0:0) loads `settings.database_url` directly; confirm it points to the correct DB
+- [alembic/env.py] loads `settings.database_url` directly; confirm it points to the correct DB
 
 ### CORS issues
 
@@ -201,4 +201,4 @@ uv run python seeders/run_seeders.py category_seeder.py
 
 ## Status
 
-- **README content prepared** and ready to paste into [README.md](cci:7://file:///c:/Users/Baller/Desktop/hub.com/wallet-store-lovable-version/backend/README.md:0:0-0:0).
+- **README content prepared** and ready to paste into [README.md].
