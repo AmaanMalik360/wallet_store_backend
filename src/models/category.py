@@ -37,6 +37,13 @@ class Category(Base):
         back_populates="parent",
         cascade="all, delete-orphan"
     )
+    
+    # Relationship to category_attributes (many-to-many through CategoryAttribute)
+    category_attributes: Mapped[list["CategoryAttribute"]] = relationship(
+        "CategoryAttribute",
+        back_populates="category",
+        cascade="all, delete-orphan"
+    )
 
     @staticmethod
     def generate_slug(name: str) -> str:

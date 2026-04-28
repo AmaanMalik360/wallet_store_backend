@@ -10,6 +10,7 @@ class AttributeValueResponse(BaseModel):
 
 
 class AttributeFilterResponse(BaseModel):
+    id: int
     name: str
     values: List[AttributeValueResponse]
 
@@ -17,6 +18,9 @@ class AttributeFilterResponse(BaseModel):
 class CategoryBase(BaseModel):
     name: str
     parent_id: Optional[int] = None
+    
+    class Config:
+        from_attributes = True
 
 
 class CategoryCreate(BaseModel):

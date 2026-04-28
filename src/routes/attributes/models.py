@@ -35,8 +35,12 @@ class AttributeValueResponse(BaseModel):
 
 
 class AttributeWithValuesResponse(BaseModel):
+    id: int
     name: str
-    values: List[dict]
+    values: List[AttributeValueResponse]
+
+    class Config:
+        from_attributes = True
 
 
 # Response wrapper types using shared ApiResponse
@@ -45,4 +49,12 @@ class AttributeResponseWrapper(ApiResponse[AttributeResponse]):
 
 
 class AttributeValueResponseWrapper(ApiResponse[AttributeValueResponse]):
+    pass
+
+
+class AttributeListResponseWrapper(ApiResponse[List[AttributeResponse]]):
+    pass
+
+
+class AttributeWithValuesResponseWrapper(ApiResponse[AttributeWithValuesResponse]):
     pass

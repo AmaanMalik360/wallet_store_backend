@@ -24,6 +24,11 @@ class Attribute(Base):
         back_populates="attribute",
         cascade="all, delete-orphan"
     )
+    category_attributes: Mapped[list["CategoryAttribute"]] = relationship(
+        "CategoryAttribute",
+        back_populates="attribute",
+        cascade="all, delete-orphan"
+    )
 
     def __repr__(self) -> str:
         return f"<Attribute(id={self.id}, name={self.name})>"
@@ -47,6 +52,12 @@ class AttributeValue(Base):
         String(100), 
         nullable=False
     )
+    # Optional category scope: NULL = global, set = scoped to specific category
+    category_id: Mapped[int] = mapped_column(
+        Integer,
+        ForeignKey("categories.id", ondelete="SET NULL"),
+        nullable=True
+    )
 
     # Relationships
     attribute: Mapped["Attribute"] = relationship(
@@ -59,7 +70,7 @@ class AttributeValue(Base):
     )
 
     def __repr__(self) -> str:
-        return f"<AttributeValue(id={self.id}, attribute_id={self.attribute_id}, value={self.value})>"
+        return f"<AttributeValue(id={self.id}, attribute_id={self.attribute_id}, value={self.value}, category_id={self.category_id})>"
 
 
 class ProductAttributeValue(Base):

@@ -4,6 +4,7 @@ from .user import User
 from .category import Category
 from .product import Product
 from .attribute import Attribute, AttributeValue, ProductAttributeValue
+from .category_attribute import CategoryAttribute
 from .cart import Cart, CartItem
 from .order import Order, OrderItem, OrderStatus
 from .payment import Payment, PaymentStatus
@@ -30,6 +31,7 @@ __all__ = [
     "Attribute",
     "AttributeValue", 
     "ProductAttributeValue",
+    "CategoryAttribute",
     "Cart",
     "CartItem",
     "Order",

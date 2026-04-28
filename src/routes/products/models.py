@@ -3,7 +3,6 @@ from typing import Optional, List
 from datetime import datetime
 from uuid import UUID
 from fastapi import UploadFile
-from src.routes.categories.models import CategoryBase
 from src.routes.models import ApiResponse
 
 
@@ -39,8 +38,18 @@ class ProductResponse(ProductBase):
         from_attributes = True
 
 
+class CategoryInProduct(BaseModel):
+    id: int
+    name: str
+    slug: str
+    parent_id: Optional[int] = None
+    
+    class Config:
+        from_attributes = True
+
+
 class ProductWithCategory(ProductResponse):
-    category: CategoryBase
+    category: Optional[CategoryInProduct] = None
     
     class Config:
         from_attributes = True

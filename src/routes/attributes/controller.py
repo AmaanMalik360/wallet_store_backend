@@ -4,6 +4,8 @@ from typing import List
 from src.models.db import DbSession
 from . import models
 from .service import (
+    get_attributes,
+    get_attribute_by_id,
     create_attribute,
     create_attribute_value
 )
@@ -12,6 +14,40 @@ router = APIRouter(
     prefix="/attributes",
     tags=["Attributes"]
 )
+
+
+@router.get("/", response_model=models.AttributeListResponseWrapper)
+def list_attributes(db: DbSession):
+    """Get all attributes"""
+    attrs = get_attributes(db)
+    return models.AttributeListResponseWrapper(
+        success=True,
+        message="Attributes retrieved successfully",
+        data=[models.AttributeResponse(id=a.id, name=a.name) for a in attrs]
+    )
+
+
+@router.get("/{attribute_id}", response_model=models.AttributeWithValuesResponseWrapper)
+def get_attribute(attribute_id: int, db: DbSession):
+    """Get a single attribute with its values"""
+    attr = get_attribute_by_id(db, attribute_id)
+    return models.AttributeWithValuesResponseWrapper(
+        success=True,
+        message="Attribute retrieved successfully",
+        data=models.AttributeWithValuesResponse(
+            id=attr.id,
+            name=attr.name,
+            values=[
+                models.AttributeValueResponse(
+                    id=v.id,
+                    attribute_id=v.attribute_id,
+                    value=v.value,
+                    category_id=v.category_id
+                )
+                for v in attr.values
+            ]
+        )
+    )
 
 
 @router.post("/", response_model=models.AttributeResponseWrapper, status_code=status.HTTP_201_CREATED)
