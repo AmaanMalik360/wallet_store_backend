@@ -7,7 +7,7 @@ from collections import defaultdict
 
 from . import models
 from src.models.category import Category
-from src.routes.attributes.service import get_attributes_for_category, build_filterable_attributes_for_category_map
+from src.routes.attributes.service import build_filterable_attributes_for_category_map
 
 logger = logging.getLogger(__name__)
 
@@ -62,27 +62,83 @@ def build_category_hierarchy_from_maps(
     )
 
 
+def collect_subtree_rows_from_orm(category: Category) -> list[dict]:
+    rows: list[dict] = []
+
+    def _walk(node: Category):
+        rows.append(
+            {
+                "id": node.id,
+                "name": node.name,
+                "slug": node.slug,
+                "parent_id": node.parent_id,
+            }
+        )
+        for child in node.children:
+            _walk(child)
+
+    _walk(category)
+    return rows
+
+
+def build_category_trees_from_subtree_rows(
+    db: Session,
+    root_ids: list[int],
+    subtree_rows: list[dict],
+    include_attributes: bool,
+) -> list[models.CategoryData]:
+    if not root_ids:
+        return []
+
+    categories_by_id = {row["id"]: row for row in subtree_rows}
+    children_by_parent: dict[int | None, list[int]] = defaultdict(list)
+    for row in subtree_rows:
+        children_by_parent[row["parent_id"]].append(row["id"])
+
+    attrs_by_category_id: dict[int, list[dict]] = {}
+    if include_attributes:
+        attrs_by_category_id = build_filterable_attributes_for_category_map(db, categories_by_id)
+
+    return [
+        build_category_hierarchy_from_maps(
+            category_id=root_id,
+            categories_by_id=categories_by_id,
+            children_by_parent=children_by_parent,
+            attrs_by_category_id=attrs_by_category_id,
+        )
+        for root_id in root_ids
+        if root_id in categories_by_id
+    ]
+
+
 def build_category_hierarchy(
     category: Category,
     db: Optional[Session] = None,
     include_attributes: bool = False
 ) -> models.CategoryData:
-    """Recursively build category hierarchy with children"""
-    children = [build_category_hierarchy(child, db=db, include_attributes=include_attributes) for child in category.children]
-    
-    # Get filterable attributes for this category (returns list of dicts with name and values)
-    filterable_attributes = []
-    if include_attributes and db is not None:
-        filterable_attributes = get_attributes_for_category(db, category.id)
-    
-    return models.CategoryData(
-        id=category.id,
-        name=category.name,
-        slug=category.slug,
-        parent_id=category.parent_id,
-        children=children,
-        filterable_attributes=filterable_attributes
+    """Build category hierarchy via map-based tree builder."""
+    subtree_rows = collect_subtree_rows_from_orm(category)
+
+    if db is None:
+        categories_by_id = {row["id"]: row for row in subtree_rows}
+        children_by_parent: dict[int | None, list[int]] = defaultdict(list)
+        for row in subtree_rows:
+            children_by_parent[row["parent_id"]].append(row["id"])
+
+        return build_category_hierarchy_from_maps(
+            category_id=category.id,
+            categories_by_id=categories_by_id,
+            children_by_parent=children_by_parent,
+            attrs_by_category_id={},
+        )
+
+    trees = build_category_trees_from_subtree_rows(
+        db=db,
+        root_ids=[category.id],
+        subtree_rows=subtree_rows,
+        include_attributes=include_attributes,
     )
+    return trees[0]
 
 
 def create_category(db: Session, category: models.CategoryCreate) -> models.CategoryData:
@@ -123,19 +179,13 @@ def get_categories(db: Session, slug: Optional[str] = None, skip: int = 0, limit
 
             root_ids = [category.id]
             subtree_rows = fetch_subtree_category_rows(db, root_ids)
-            categories_by_id = {row["id"]: row for row in subtree_rows}
-            children_by_parent: dict[int | None, list[int]] = defaultdict(list)
-            for row in subtree_rows:
-                children_by_parent[row["parent_id"]].append(row["id"])
-
-            attrs_by_category_id = build_filterable_attributes_for_category_map(db, categories_by_id)
-            tree = build_category_hierarchy_from_maps(
-                category_id=category.id,
-                categories_by_id=categories_by_id,
-                children_by_parent=children_by_parent,
-                attrs_by_category_id=attrs_by_category_id,
+            trees = build_category_trees_from_subtree_rows(
+                db=db,
+                root_ids=root_ids,
+                subtree_rows=subtree_rows,
+                include_attributes=True,
             )
-            result = tree.children
+            result = trees[0].children if trees else []
             logger.info(f"Retrieved category with slug: {slug}")
         else:
             # Get paginated parent categories (categories with no parent)
@@ -145,21 +195,12 @@ def get_categories(db: Session, slug: Optional[str] = None, skip: int = 0, limit
             root_ids = [category.id for category in parent_categories]
 
             subtree_rows = fetch_subtree_category_rows(db, root_ids)
-            categories_by_id = {row["id"]: row for row in subtree_rows}
-            children_by_parent: dict[int | None, list[int]] = defaultdict(list)
-            for row in subtree_rows:
-                children_by_parent[row["parent_id"]].append(row["id"])
-
-            attrs_by_category_id = build_filterable_attributes_for_category_map(db, categories_by_id)
-            result = [
-                build_category_hierarchy_from_maps(
-                    category_id=root_id,
-                    categories_by_id=categories_by_id,
-                    children_by_parent=children_by_parent,
-                    attrs_by_category_id=attrs_by_category_id,
-                )
-                for root_id in root_ids
-            ]
+            result = build_category_trees_from_subtree_rows(
+                db=db,
+                root_ids=root_ids,
+                subtree_rows=subtree_rows,
+                include_attributes=True,
+            )
             logger.info(f"Retrieved {len(parent_categories)} parent categories (skip={skip}, limit={limit})")
         
         return result

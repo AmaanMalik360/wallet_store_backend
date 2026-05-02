@@ -14,7 +14,73 @@ def build_filterable_attributes_for_category_map(
     db: Session,
     categories_by_id: dict[int, dict],
 ) -> dict[int, list[dict]]:
-    """Build filterable attributes for many categories in batch using in-memory lineage."""
+    """
+    Build a map of filterable attributes for a batch of categories using in-memory ancestry traversal.
+
+    This function answers the question: "For each given category, which attributes and their
+    allowed values should be shown as filters?" It accounts for inherited attributes — i.e.,
+    attributes assigned to ancestor categories are also considered applicable to descendant
+    categories, since a product in a child category implicitly belongs to all parent categories.
+
+    Steps performed:
+        1. Queries all `CategoryAttribute` rows for the given category IDs to find which
+           attributes are directly assigned to each category.
+        2. For each category, walks up the parent chain (using `categories_by_id` in-memory,
+           avoiding extra DB queries) to build a full lineage list: [self, parent, grandparent, ...].
+        3. Merges attribute IDs from all ancestors into an inherited set per category.
+        4. Fetches the full `Attribute` objects (with their `values` eagerly loaded) for all
+           collected attribute IDs in a single batched query.
+        5. For each category, builds a list of attribute dicts. Each attribute's `values` list
+           is filtered to include only values that are either global (category_id is None) or
+           belong to a category within the current category's lineage (ancestor-scoped values).
+        6. Deduplicates values by ID and sorts attributes by ID for stable ordering.
+
+    Args:
+        db (Session):
+            An active SQLAlchemy database session used to query `CategoryAttribute` and
+            `Attribute` (with its `AttributeValue` children).
+
+        categories_by_id (dict[int, dict]):
+            A flat dictionary mapping category IDs to their data dicts. Each dict must
+            contain at minimum a `"parent_id"` key (int or None) so the function can
+            walk up the ancestor chain.
+
+            Example:
+                {
+                    1: {"id": 1, "name": "Electronics", "parent_id": None},
+                    2: {"id": 2, "name": "Phones",      "parent_id": 1},
+                    3: {"id": 3, "name": "Smartphones", "parent_id": 2},
+                }
+
+    Returns:
+        dict[int, list[dict]]:
+            A dictionary mapping each category ID to its list of applicable filter attributes.
+            Each attribute entry is a dict with the shape:
+                {
+                    "id":     int,         # Attribute primary key
+                    "name":   str,         # Attribute display name (e.g. "Color", "Brand")
+                    "values": list[dict],  # Filtered & deduplicated attribute values
+                }
+            Each value entry inside "values" is:
+                {
+                    "id":    int,  # AttributeValue primary key
+                    "value": str,  # Display value (e.g. "Red", "Samsung")
+                }
+
+            If `categories_by_id` is empty or no attributes are found, returns an empty dict
+            or a dict with empty lists respectively.
+
+            Example output:
+                {
+                    2: [
+                        {"id": 10, "name": "Brand",  "values": [{"id": 1, "value": "Samsung"}, ...]},
+                        {"id": 11, "name": "Color",  "values": [{"id": 5, "value": "Black"}, ...]},
+                    ],
+                    3: [
+                        {"id": 10, "name": "Brand",  "values": [{"id": 1, "value": "Samsung"}, ...]},
+                    ],
+                }
+    """
     category_ids = list(categories_by_id.keys())
     if not category_ids:
         return {}
