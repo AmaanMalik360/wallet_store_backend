@@ -1,38 +1,15 @@
 from typing import List, Optional
 from sqlalchemy.orm import Session
-from sqlalchemy import text
 from fastapi import HTTPException
 import logging
 from collections import defaultdict
 
 from . import models
+from .helpers import fetch_subtree_category_rows, get_category_by_id
 from src.models.category import Category
 from src.routes.attributes.service import build_filterable_attributes_for_category_map
 
 logger = logging.getLogger(__name__)
-
-
-def fetch_subtree_category_rows(db: Session, root_ids: list[int]) -> list[dict]:
-    if not root_ids:
-        return []
-
-    query = text(
-        """
-        WITH RECURSIVE category_tree AS (
-            SELECT id, name, slug, parent_id
-            FROM categories
-            WHERE id = ANY(:root_ids)
-            UNION ALL
-            SELECT child.id, child.name, child.slug, child.parent_id
-            FROM categories child
-            JOIN category_tree parent ON child.parent_id = parent.id
-        )
-        SELECT id, name, slug, parent_id
-        FROM category_tree
-        """
-    )
-    rows = db.execute(query, {"root_ids": root_ids}).mappings().all()
-    return [dict(row) for row in rows]
 
 
 def build_category_hierarchy_from_maps(
@@ -210,15 +187,6 @@ def get_categories(db: Session, slug: Optional[str] = None, skip: int = 0, limit
     except Exception as e:
         logger.error(f"Failed to retrieve categories. Error: {str(e)}")
         raise HTTPException(status_code=500, detail="Failed to retrieve categories")
-
-
-def get_category_by_id(db: Session, category_id: int) -> Category:
-    category = db.query(Category).filter(Category.id == category_id).first()
-    if not category:
-        logger.warning(f"Category {category_id} not found")
-        raise HTTPException(status_code=404, detail="Category not found")
-    logger.info(f"Retrieved category {category_id}")
-    return category
 
 
 def update_category(db: Session, category_id: int, category_update: models.CategoryUpdate) -> models.CategoryData:

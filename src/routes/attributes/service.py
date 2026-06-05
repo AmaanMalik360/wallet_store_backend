@@ -309,48 +309,53 @@ def create_attribute(db: Session, name: str) -> Attribute:
         raise HTTPException(status_code=500, detail="Failed to create attribute")
 
 
-def create_attribute_value(
-    db: Session,
-    attribute_id: int,
-    value: str,
-    category_id: int | None = None
-) -> AttributeValue:
-    """
-    Add a value to an attribute.
-    - category_id=None  → global value, visible for all categories using this attribute
-    - category_id=X     → scoped value, visible only when fetching attributes for category X
-    """
+def update_attribute(db: Session, attribute_id: int, name: str) -> Attribute:
+    """Update an attribute's name"""
     try:
         attribute = db.query(Attribute).filter(Attribute.id == attribute_id).first()
         if not attribute:
             raise HTTPException(status_code=404, detail="Attribute not found")
 
-        existing = db.query(AttributeValue).filter(
-            AttributeValue.attribute_id == attribute_id,
-            AttributeValue.category_id == category_id,
-            AttributeValue.value == value
+        existing = db.query(Attribute).filter(
+            Attribute.name == name,
+            Attribute.id != attribute_id
         ).first()
         if existing:
-            raise HTTPException(status_code=400, detail="Value already exists for this attribute and category")
+            raise HTTPException(status_code=400, detail="Attribute name already exists")
 
-        attr_value = AttributeValue(
-            attribute_id=attribute_id,
-            value=value,
-            category_id=category_id
-        )
-        db.add(attr_value)
+        attribute.name = name
         db.commit()
-        db.refresh(attr_value)
+        db.refresh(attribute)
 
-        logger.info(f"Created attribute value '{value}' for attribute {attribute_id}, category_id={category_id}")
-        return attr_value
+        logger.info(f"Updated attribute {attribute_id} name to '{name}'")
+        return attribute
 
     except HTTPException:
         raise
     except Exception as e:
-        logger.error(f"Failed to create attribute value. Error: {str(e)}")
+        logger.error(f"Failed to update attribute {attribute_id}. Error: {str(e)}")
         db.rollback()
-        raise HTTPException(status_code=500, detail="Failed to create attribute value")
+        raise HTTPException(status_code=500, detail="Failed to update attribute")
+
+
+def delete_attribute(db: Session, attribute_id: int) -> None:
+    """Delete an attribute and all its values"""
+    try:
+        attribute = db.query(Attribute).filter(Attribute.id == attribute_id).first()
+        if not attribute:
+            raise HTTPException(status_code=404, detail="Attribute not found")
+
+        db.delete(attribute)
+        db.commit()
+
+        logger.info(f"Deleted attribute {attribute_id}")
+
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Failed to delete attribute {attribute_id}. Error: {str(e)}")
+        db.rollback()
+        raise HTTPException(status_code=500, detail="Failed to delete attribute")
 
 
 def assign_attributes_to_category(

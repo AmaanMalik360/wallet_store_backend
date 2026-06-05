@@ -31,7 +31,7 @@ class Settings(BaseSettings):
     
     # CORS Settings
     allowed_origins: List[str] = ["http://localhost:3000", "http://localhost:8080"]
-    allowed_methods: List[str] = ["GET", "POST", "PUT", "DELETE", "OPTIONS"]
+    allowed_methods: List[str] = ["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"]
     allowed_headers: List[str] = ["*"]
     
     # Schema management

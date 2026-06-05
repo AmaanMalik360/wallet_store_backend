@@ -1,15 +1,15 @@
 from pydantic import BaseModel
 from typing import Optional, List
 from src.routes.models import ApiResponse
+from src.routes.attribute_values.models import AttributeValueResponse
 
 
 class AttributeCreate(BaseModel):
     name: str
 
 
-class AttributeValueCreate(BaseModel):
-    value: str
-    category_id: Optional[int] = None
+class AttributeUpdate(BaseModel):
+    name: str
 
 
 class AssignAttributesRequest(BaseModel):
@@ -19,16 +19,6 @@ class AssignAttributesRequest(BaseModel):
 class AttributeResponse(BaseModel):
     id: int
     name: str
-
-    class Config:
-        from_attributes = True
-
-
-class AttributeValueResponse(BaseModel):
-    id: int
-    attribute_id: int
-    value: str
-    category_id: Optional[int] = None
 
     class Config:
         from_attributes = True
@@ -45,10 +35,6 @@ class AttributeWithValuesResponse(BaseModel):
 
 # Response wrapper types using shared ApiResponse
 class AttributeResponseWrapper(ApiResponse[AttributeResponse]):
-    pass
-
-
-class AttributeValueResponseWrapper(ApiResponse[AttributeValueResponse]):
     pass
 
 

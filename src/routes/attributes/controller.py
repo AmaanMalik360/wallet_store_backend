@@ -7,7 +7,8 @@ from .service import (
     get_attributes,
     get_attribute_by_id,
     create_attribute,
-    create_attribute_value
+    update_attribute,
+    delete_attribute,
 )
 
 router = APIRouter(
@@ -61,25 +62,18 @@ def create_attribute_endpoint(attribute: models.AttributeCreate, db: DbSession):
     )
 
 
-@router.post("/{attribute_id}/values", response_model=models.AttributeValueResponseWrapper, status_code=status.HTTP_201_CREATED)
-def create_attribute_value_endpoint(
-    attribute_id: int,
-    attr_value: models.AttributeValueCreate,
-    db: DbSession
-):
-    """
-    Add a value to an attribute.
-    - category_id=None  → global value, visible for all categories using this attribute
-    - category_id=X     → scoped value, visible only when fetching attributes for category X
-    """
-    attr_val = create_attribute_value(db, attribute_id, attr_value.value, attr_value.category_id)
-    return models.AttributeValueResponseWrapper(
+@router.patch("/{attribute_id}", response_model=models.AttributeResponseWrapper)
+def update_attribute_endpoint(attribute_id: int, attribute: models.AttributeUpdate, db: DbSession):
+    """Update an attribute's name"""
+    attr = update_attribute(db, attribute_id, attribute.name)
+    return models.AttributeResponseWrapper(
         success=True,
-        message="Attribute value created successfully",
-        data=models.AttributeValueResponse(
-            id=attr_val.id,
-            attribute_id=attr_val.attribute_id,
-            value=attr_val.value,
-            category_id=attr_val.category_id
-        )
+        message="Attribute updated successfully",
+        data=models.AttributeResponse(id=attr.id, name=attr.name)
     )
+
+
+@router.delete("/{attribute_id}", status_code=status.HTTP_204_NO_CONTENT)
+def delete_attribute_endpoint(attribute_id: int, db: DbSession):
+    """Delete an attribute and all its values"""
+    delete_attribute(db, attribute_id)
