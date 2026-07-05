@@ -4,6 +4,8 @@ from src.routes.categories.controller import router as categories_router
 from src.routes.products.controller import router as products_router
 from src.routes.attributes.controller import router as attributes_router
 from src.routes.attribute_values.controller import router as attribute_values_router
+from src.routes.admin.controller import router as admin_router
+
 
 def register_routes(app: FastAPI):
     app.include_router(users_router)
@@ -11,3 +13,4 @@ def register_routes(app: FastAPI):
     app.include_router(products_router)
     app.include_router(attributes_router)
     app.include_router(attribute_values_router)
+    app.include_router(admin_router)

@@ -1,5 +1,5 @@
 from seeders.base_seeder import BaseSeeder
-from models.category import Category
+from src.models.category import Category
 
 class CategorySeeder(BaseSeeder):
     """Seed categories with hierarchy"""

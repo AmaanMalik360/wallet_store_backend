@@ -9,6 +9,9 @@ from .cart import Cart, CartItem
 from .order import Order, OrderItem, OrderStatus
 from .payment import Payment, PaymentStatus
 from .shipment import Shipment
+from .role import Role, RolePermission
+from .permission import Permission
+from .user_role import UserRole
 
 # Add missing relationships to User model
 from sqlalchemy.orm import relationship
@@ -16,6 +19,7 @@ from sqlalchemy.orm import relationship
 # Add relationships to User model
 User.cart = relationship("Cart", back_populates="user", uselist=False)
 User.orders = relationship("Order", back_populates="user")
+User.user_roles = relationship("UserRole", back_populates="user", cascade="all, delete-orphan")
 
 # Add relationships to Category model
 Category.products = relationship("Product", back_populates="category")
@@ -39,5 +43,9 @@ __all__ = [
     "OrderStatus",
     "Payment",
     "PaymentStatus",
-    "Shipment"
+    "Shipment",
+    "Role",
+    "RolePermission",
+    "Permission",
+    "UserRole",
 ]

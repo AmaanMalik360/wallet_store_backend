@@ -1,3 +1,4 @@
+from typing import Optional
 from sqlalchemy import UUID, String, Boolean, DateTime
 from sqlalchemy.orm import Mapped, mapped_column
 from sqlalchemy.sql import func
@@ -13,17 +14,17 @@ class User(Base):
         primary_key=True, 
         default=uuid.uuid4
     )
-    email: Mapped[str] = mapped_column(
+    email: Mapped[Optional[str]] = mapped_column(
         String(255), 
         unique=True, 
         nullable=True,
         index=True
     )
-    password: Mapped[str] = mapped_column(
+    password: Mapped[Optional[str]] = mapped_column(
         String(255), 
         nullable=True
     )
-    name: Mapped[str] = mapped_column(
+    name: Mapped[Optional[str]] = mapped_column(
         String(100), 
         nullable=True
     )
@@ -31,6 +32,10 @@ class User(Base):
         Boolean, 
         nullable=False, 
         default=False
+    )
+    guest_expires_at: Mapped[Optional[DateTime]] = mapped_column(
+        DateTime(timezone=True),
+        nullable=True
     )
     created_at: Mapped[DateTime] = mapped_column(
         DateTime(timezone=True), 

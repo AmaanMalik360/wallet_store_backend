@@ -1,6 +1,6 @@
 # seeders/attribute_seeder.py
 from seeders.base_seeder import BaseSeeder
-from models.attribute import Attribute, AttributeValue
+from src.models.attribute import Attribute, AttributeValue
 
 class AttributeSeeder(BaseSeeder):
     """Seed attributes and their values"""
