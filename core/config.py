@@ -35,6 +35,9 @@ class Settings(BaseSettings):
     allowed_origins: List[str] = ["http://localhost:3000", "http://localhost:8080"]
     allowed_methods: List[str] = ["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"]
     allowed_headers: List[str] = ["*"]
+
+    # Cookie Settings
+    cookie_secure: bool = False  # Set True in production (HTTPS only)
     
     # Schema management
     auto_create_tables: bool = False

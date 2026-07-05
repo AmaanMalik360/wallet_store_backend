@@ -1,6 +1,6 @@
 from typing import Optional, Annotated
 from uuid import UUID
-from fastapi import Depends, HTTPException, status
+from fastapi import Depends, HTTPException, Request, status
 from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
 from sqlalchemy.orm import Session, joinedload
 
@@ -14,7 +14,21 @@ from .jwt import decode_token, TokenPayload
 security = HTTPBearer(auto_error=False)
 
 
+def _extract_token(
+    request: Request,
+    credentials: Optional[HTTPAuthorizationCredentials],
+) -> Optional[str]:
+    """Extract token from HttpOnly cookie first, then Authorization header."""
+    cookie_token = request.cookies.get("access_token")
+    if cookie_token:
+        return cookie_token
+    if credentials:
+        return credentials.credentials
+    return None
+
+
 async def get_optional_user(
+    request: Request,
     credentials: Annotated[Optional[HTTPAuthorizationCredentials], Depends(security)],
     db: Session = Depends(get_db)
 ) -> Optional[User]:
@@ -22,11 +36,12 @@ async def get_optional_user(
     Get current user if authenticated, otherwise return None.
     Use this for routes that work with or without authentication.
     """
-    if not credentials:
+    token = _extract_token(request, credentials)
+    if not token:
         return None
     
-    token_data = decode_token(credentials.credentials)
-    if not token_data:
+    token_data = decode_token(token)
+    if not token_data or token_data.type != "access":
         return None
     
     user = db.query(User).filter(User.id == UUID(token_data.sub)).first()
@@ -34,6 +49,7 @@ async def get_optional_user(
 
 
 async def get_current_user(
+    request: Request,
     credentials: Annotated[Optional[HTTPAuthorizationCredentials], Depends(security)],
     db: Session = Depends(get_db)
 ) -> User:
@@ -47,11 +63,12 @@ async def get_current_user(
         headers={"WWW-Authenticate": "Bearer"},
     )
     
-    if not credentials:
+    token = _extract_token(request, credentials)
+    if not token:
         raise credentials_exception
     
-    token_data = decode_token(credentials.credentials)
-    if not token_data:
+    token_data = decode_token(token)
+    if not token_data or token_data.type != "access":
         raise credentials_exception
     
     user = db.query(User).filter(User.id == UUID(token_data.sub)).first()

@@ -10,7 +10,7 @@ from pwdlib import PasswordHash
 from . import models
 from src.models.user import User
 from src.models.cart import Cart
-from src.auth.jwt import create_access_token, create_guest_token, get_token_expiry_seconds
+from src.auth.jwt import create_access_token, create_guest_token, create_refresh_token, get_token_expiry_seconds
 from core.config import settings
 
 logger = logging.getLogger(__name__)
@@ -170,14 +170,13 @@ def login_user(db: Session, email: str, password: str) -> dict:
         )
     
     access_token = create_access_token(user.id, is_guest=False)
-    expires_in = get_token_expiry_seconds(is_guest=False)
+    refresh_token = create_refresh_token(user.id)
     
     logger.info(f"User logged in: {user.email}")
     
     return {
         "access_token": access_token,
-        "token_type": "bearer",
-        "expires_in": expires_in,
+        "refresh_token": refresh_token,
         "user": user
     }
 
@@ -214,15 +213,14 @@ def convert_guest_to_user(
     db.commit()
     db.refresh(guest_user)
     
-    # Generate new token for registered user
+    # Generate new tokens for registered user
     access_token = create_access_token(guest_user.id, is_guest=False)
-    expires_in = get_token_expiry_seconds(is_guest=False)
+    refresh_token = create_refresh_token(guest_user.id)
     
     logger.info(f"Converted guest {guest_user.id} to registered user: {registration.email}")
     
     return {
         "access_token": access_token,
-        "token_type": "bearer",
-        "expires_in": expires_in,
+        "refresh_token": refresh_token,
         "user": guest_user
     }

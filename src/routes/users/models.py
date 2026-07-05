@@ -46,9 +46,6 @@ class GuestUserResponse(BaseModel):
 
 
 class AuthTokenResponse(BaseModel):
-    access_token: str
-    token_type: str = "bearer"
-    expires_in: int
     user: GuestUserResponse
 
 
@@ -58,9 +55,6 @@ class LoginRequest(BaseModel):
 
 
 class LoginResponse(BaseModel):
-    access_token: str
-    token_type: str = "bearer"
-    expires_in: int
     user: UserResponse
 
 
