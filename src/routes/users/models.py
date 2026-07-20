@@ -1,5 +1,5 @@
 from pydantic import BaseModel, EmailStr
-from typing import Optional
+from typing import Optional, List
 from datetime import datetime
 from uuid import UUID
 from src.routes.models import ApiResponse
@@ -30,6 +30,7 @@ class UserResponse(BaseModel):
     is_guest: bool
     created_at: datetime
     updated_at: datetime
+    permissions: List[str] = []
 
     class Config:
         from_attributes = True

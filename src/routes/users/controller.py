@@ -4,7 +4,7 @@ from uuid import UUID
 
 from src.models.db import DbSession
 from src.models.user import User
-from src.auth.dependencies import get_current_user, CurrentUser
+from src.auth.dependencies import get_current_user, CurrentUser, get_user_permissions
 from src.auth.jwt import decode_token, create_access_token
 from core.config import settings
 from . import models
@@ -53,6 +53,13 @@ def _clear_auth_cookies(response: Response) -> None:
     """Clear all auth cookies."""
     response.delete_cookie(key="access_token", samesite="lax")
     response.delete_cookie(key="refresh_token", samesite="lax", path="/api/v1/users/refresh")
+
+
+def _user_response_with_permissions(db, user: User) -> models.UserResponse:
+    """Build a UserResponse including the user's effective permissions."""
+    response = models.UserResponse.model_validate(user)
+    response.permissions = list(get_user_permissions(db, user.id))
+    return response
 
 
 @router.post("/", response_model=models.UserResponseWrapper, status_code=status.HTTP_201_CREATED)
@@ -144,7 +151,7 @@ def login(credentials: models.LoginRequest, response: Response, db: DbSession):
         success=True,
         message="Login successful",
         data=models.LoginResponse(
-            user=models.UserResponse.model_validate(result["user"])
+            user=_user_response_with_permissions(db, result["user"])
         )
     )
 
@@ -167,18 +174,18 @@ def register_guest(
         success=True,
         message="Registration successful",
         data=models.LoginResponse(
-            user=models.UserResponse.model_validate(result["user"])
+            user=_user_response_with_permissions(db, result["user"])
         )
     )
 
 
 @router.get("/me", response_model=models.UserResponseWrapper)
-def get_current_user_info(current_user: CurrentUser):
+def get_current_user_info(current_user: CurrentUser, db: DbSession):
     """Get the current authenticated user's information."""
     return models.UserResponseWrapper(
         success=True,
         message="User retrieved successfully",
-        data=current_user
+        data=_user_response_with_permissions(db, current_user)
     )
 
 
@@ -220,7 +227,7 @@ def refresh_token(request: Request, response: Response, db: DbSession):
     return models.UserResponseWrapper(
         success=True,
         message="Token refreshed",
-        data=models.UserResponse.model_validate(user)
+        data=_user_response_with_permissions(db, user)
     )
 
 
