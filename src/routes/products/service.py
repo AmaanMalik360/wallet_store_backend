@@ -13,25 +13,40 @@ from src.models.attribute import ProductAttributeValue, AttributeValue
 logger = logging.getLogger(__name__)
 
 
-def create_product(db: Session, product: models.ProductCreate, image_paths: Optional[List[str]] = None) -> Product:
+def create_product(
+    db: Session,
+    product: models.ProductCreate,
+    image_paths: Optional[List[str]] = None,
+    attribute_value_ids: Optional[List[int]] = None
+) -> Product:
     try:
-        # Create new product
         db_product = Product(
             title=product.title,
             description=product.description,
             category_id=product.category_id,
             price=product.price,
             stock_quantity=product.stock_quantity,
+            sku=product.sku,
             images=image_paths or product.images or []
         )
-        
+
         db.add(db_product)
+        db.flush()
+
+        if attribute_value_ids:
+            for av_id in attribute_value_ids:
+                pav = ProductAttributeValue(
+                    product_id=db_product.id,
+                    attribute_value_id=av_id
+                )
+                db.add(pav)
+
         db.commit()
         db.refresh(db_product)
-        
+
         logger.info(f"Created new product: {product.title} with {len(db_product.images)} images")
         return db_product
-        
+
     except Exception as e:
         logger.error(f"Failed to create product {product.title}. Error: {str(e)}")
         db.rollback()
@@ -54,6 +69,8 @@ def get_products(
         query = db.query(Product).options(
             joinedload(Product.category),
             joinedload(Product.attribute_values)
+            .joinedload(ProductAttributeValue.attribute_value)
+            .joinedload(AttributeValue.attribute)
         )
 
         if search:
@@ -140,7 +157,10 @@ def get_products(
 def get_product_by_id(db: Session, product_id: UUID) -> Product:
     """Get a specific product by ID with category information"""
     product = db.query(Product).options(
-        joinedload(Product.category)
+        joinedload(Product.category),
+        joinedload(Product.attribute_values)
+        .joinedload(ProductAttributeValue.attribute_value)
+        .joinedload(AttributeValue.attribute)
     ).filter(Product.id == product_id).first()
     
     if not product:

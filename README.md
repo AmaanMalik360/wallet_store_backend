@@ -1,7 +1,3 @@
-
-Paste the following into [backend/README.md]:
-
-```markdown
 # Wallet Store Backend (FastAPI)
 
 FastAPI backend for the Wallet Store application using:
@@ -14,7 +10,7 @@ FastAPI backend for the Wallet Store application using:
 
 ## Requirements
 
-- **Python**: `>= 3.12` (see [pyproject.toml]
+- **Python**: `>= 3.12` (see [pyproject.toml])
 - **PostgreSQL**: running locally or reachable over the network
 
 ## Project Structure (high level)
@@ -31,7 +27,7 @@ FastAPI backend for the Wallet Store application using:
   - SQLAlchemy engine/session factory
   - `get_db()` dependency for request-scoped sessions
 - **`alembic/`**
-  - Alembic configuration (configured to use `settings.database_url` in [alembic/env.py]
+  - Alembic configuration (configured to use `settings.database_url` in [alembic/env.py])
 - **`seeders/`**
   - Seeder runner + individual seeders (e.g. `category_seeder.py`)
 
@@ -42,6 +38,13 @@ FastAPI backend for the Wallet Store application using:
 ```bash
 uv sync
 ```
+
+> **Windows Note:** If `uv sync` fails with error 4551 (Application Control policy blocking uv's managed Python), run this once to point uv at your system Python, then re-run `uv sync`:
+> ```bash
+> uv venv --python "C:\path\to\your\python.exe"
+> uv sync
+> ```
+> Run `where python` to find your system Python path.
 
 ### 2) Configure environment variables
 
@@ -119,7 +122,7 @@ Routes are registered in [src/api.py].
 
 ### Users
 
-Base path: [/users](cci:9://file:///users:0:0-0:0)
+Base path: `/users`
 
 - `POST /users`
 - `GET /users`
@@ -138,16 +141,16 @@ Common commands:
 
 ```bash
 # create empty migration
-alembic revision -m "Your message"
+uv run alembic revision -m "Your message"
 
 # apply all migrations
-alembic upgrade head
+uv run alembic upgrade head
 
 # check current revision
-alembic current
+uv run alembic current
 
 # rollback one migration
-alembic downgrade -1
+uv run alembic downgrade -1
 ```
 
 Alembic is configured to use the database URL from settings:
@@ -188,7 +191,7 @@ uv run python seeders/run_seeders.py category_seeder.py
 - Verify `.env` values match your DB credentials
 - Confirm the connection info in `core/config.py` (`settings.database_url`)
 
-### Migrations don’t run / env not loaded
+### Migrations don't run / env not loaded
 
 - Ensure `.env` exists at the project root
 - [alembic/env.py] loads `settings.database_url` directly; confirm it points to the correct DB
@@ -197,8 +200,3 @@ uv run python seeders/run_seeders.py category_seeder.py
 
 - Update `ALLOWED_ORIGINS` in `.env` (comma-separated)
 - Restart the server after changing `.env`
-```
-
-## Status
-
-- **README content prepared** and ready to paste into [README.md].

@@ -12,6 +12,7 @@ class ProductBase(BaseModel):
     category_id: Optional[int] = None
     price: int = Field(..., gt=0, description="Price in cents")
     stock_quantity: int = Field(..., ge=0, description="Number of items in stock")
+    sku: Optional[str] = None
     images: Optional[List[str]] = Field(default_factory=list, description="List of image URLs")
 
 
@@ -25,8 +26,33 @@ class ProductUpdate(BaseModel):
     category_id: Optional[int] = None
     price: Optional[int] = Field(None, gt=0, description="Price in cents")
     stock_quantity: Optional[int] = Field(None, ge=0, description="Number of items in stock")
+    sku: Optional[str] = None
     images: Optional[List[str]] = None
     new_images: Optional[List[UploadFile]] = Field(default_factory=list, description="New image files to upload")
+
+
+class AttributeNameInProduct(BaseModel):
+    id: int
+    name: str
+
+    class Config:
+        from_attributes = True
+
+
+class AttributeValueInProduct(BaseModel):
+    id: int
+    value: str
+    attribute: AttributeNameInProduct
+
+    class Config:
+        from_attributes = True
+
+
+class ProductAttributeValueItem(BaseModel):
+    attribute_value: AttributeValueInProduct
+
+    class Config:
+        from_attributes = True
 
 
 class ProductResponse(ProductBase):
@@ -50,7 +76,8 @@ class CategoryInProduct(BaseModel):
 
 class ProductWithCategory(ProductResponse):
     category: Optional[CategoryInProduct] = None
-    
+    attribute_values: List[ProductAttributeValueItem] = []
+
     class Config:
         from_attributes = True
 

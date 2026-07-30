@@ -1,3 +1,4 @@
+from typing import Optional
 from sqlalchemy import UUID, String, Text, Integer, ForeignKey, DateTime, ARRAY
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 from sqlalchemy.sql import func
@@ -34,6 +35,11 @@ class Product(Base):
         Integer, 
         nullable=False, 
         default=0
+    )
+    sku: Mapped[Optional[str]] = mapped_column(
+        String(100),
+        nullable=True,
+        unique=True
     )
     images: Mapped[list[str]] = mapped_column(
         ARRAY(String), 

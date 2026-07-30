@@ -26,6 +26,8 @@ async def create_product(
     category_id: Optional[int] = Form(None),
     price: int = Form(...),
     stock_quantity: int = Form(...),
+    sku: Optional[str] = Form(None),
+    attribute_value_ids: Optional[List[int]] = Form(None),
     images: Optional[List[UploadFile]] = File(None, description="Product images")
 ):
     """
@@ -45,17 +47,17 @@ async def create_product(
         if images:
             image_paths = await image_upload.save_multiple_images(images)
 
-        # Create product data
         product_data = models.ProductCreate(
             title=title,
             description=description,
             category_id=category_id,
             price=price,
             stock_quantity=stock_quantity,
+            sku=sku,
             images=image_paths
         )
 
-        product = service.create_product(db, product_data, image_paths)
+        product = service.create_product(db, product_data, image_paths, attribute_value_ids or [])
         return models.ProductResponseWrapper(
             success=True,
             message="Product created successfully",
@@ -129,6 +131,7 @@ async def update_product(
     category_id: Optional[int] = Form(None),
     price: Optional[int] = Form(None),
     stock_quantity: Optional[int] = Form(None),
+    sku: Optional[str] = Form(None),
     images: Optional[str] = Form(None, description="JSON string of existing image URLs"),
     new_images: Optional[List[UploadFile]] = File(None, description="New image files to upload")
 ):
@@ -162,6 +165,8 @@ async def update_product(
             update_data['price'] = price
         if stock_quantity is not None:
             update_data['stock_quantity'] = stock_quantity
+        if sku is not None:
+            update_data['sku'] = sku
 
         # Handle image updates
         if images is not None or new_images:
