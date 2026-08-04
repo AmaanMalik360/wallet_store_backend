@@ -6,11 +6,45 @@ from fastapi import HTTPException
 import logging
 
 from . import models
+from .sku_generator import generate_sku
 from src.models.product import Product
 from src.models.category import Category
 from src.models.attribute import ProductAttributeValue, AttributeValue
 
 logger = logging.getLogger(__name__)
+
+
+def _get_product_orm(db: Session, product_id: UUID) -> Product:
+    product = db.query(Product).filter(Product.id == product_id).first()
+    if not product:
+        raise HTTPException(status_code=404, detail="Product not found")
+    return product
+
+
+def _build_product_response(product: Product) -> models.ProductWithCategory:
+    return models.ProductWithCategory(
+        id=product.id,
+        title=product.title,
+        description=product.description,
+        category_id=product.category_id,
+        price=product.price,
+        stock_quantity=product.stock_quantity,
+        sku=product.sku,
+        images=product.images or [],
+        created_at=product.created_at,
+        updated_at=product.updated_at,
+        category=models.CategoryInProduct.model_validate(product.category) if product.category else None,
+        attributes=[
+            models.ProductAttribute(
+                value_id=pav.attribute_value.id,
+                attribute_id=pav.attribute_value.attribute_id,
+                name=pav.attribute_value.attribute.name,
+                value=pav.attribute_value.value,
+            )
+            for pav in product.attribute_values
+            if pav.attribute_value and pav.attribute_value.attribute
+        ],
+    )
 
 
 def create_product(
@@ -32,6 +66,14 @@ def create_product(
 
         db.add(db_product)
         db.flush()
+
+        if not db_product.sku:
+            cat = None
+            if product.category_id:
+                cat = db.query(Category).options(
+                    joinedload(Category.parent)
+                ).filter(Category.id == product.category_id).first()
+            db_product.sku = generate_sku(db, cat)
 
         if attribute_value_ids:
             for av_id in attribute_value_ids:
@@ -64,7 +106,7 @@ def get_products(
     search: Optional[str] = None,
     sort_by: Optional[str] = None,
     attribute_value_ids: Optional[List[int]] = None
-) -> Dict[str, Any]:
+) -> Dict[str, Any]:  # data: List[models.ProductWithCategory]
     try:
         query = db.query(Product).options(
             joinedload(Product.category),
@@ -144,7 +186,7 @@ def get_products(
         products = query.offset(skip).limit(limit).all()
         logger.info(f"Retrieved {len(products)} products out of {total} total")
         return {
-            "data": products,
+            "data": [_build_product_response(p) for p in products],
             "total": total,
             "skip": skip,
             "limit": limit
@@ -154,26 +196,26 @@ def get_products(
         logger.error(f"Failed to retrieve products. Error: {str(e)}")
         raise HTTPException(status_code=500, detail="Failed to retrieve products")
 
-def get_product_by_id(db: Session, product_id: UUID) -> Product:
-    """Get a specific product by ID with category information"""
+def get_product_by_id(db: Session, product_id: UUID) -> models.ProductWithCategory:
+    """Get a specific product by ID with category and flat attributes"""
     product = db.query(Product).options(
         joinedload(Product.category),
         joinedload(Product.attribute_values)
         .joinedload(ProductAttributeValue.attribute_value)
         .joinedload(AttributeValue.attribute)
     ).filter(Product.id == product_id).first()
-    
+
     if not product:
         logger.warning(f"Product {product_id} not found")
         raise HTTPException(status_code=404, detail="Product not found")
-    
+
     logger.info(f"Retrieved product {product_id}")
-    return product
+    return _build_product_response(product)
 
 
 def update_product(db: Session, product_id: UUID, update_data: dict) -> Product:
     try:
-        product = get_product_by_id(db, product_id)
+        product = _get_product_orm(db, product_id)
         
         # Update fields based on provided data
         for field, value in update_data.items():
@@ -195,7 +237,7 @@ def update_product(db: Session, product_id: UUID, update_data: dict) -> Product:
 
 def delete_product(db: Session, product_id: UUID) -> None:
     try:
-        product = get_product_by_id(db, product_id)
+        product = _get_product_orm(db, product_id)
         
         db.delete(product)
         db.commit()

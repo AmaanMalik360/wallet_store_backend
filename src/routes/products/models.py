@@ -31,28 +31,11 @@ class ProductUpdate(BaseModel):
     new_images: Optional[List[UploadFile]] = Field(default_factory=list, description="New image files to upload")
 
 
-class AttributeNameInProduct(BaseModel):
-    id: int
+class ProductAttribute(BaseModel):
+    value_id: int
+    attribute_id: int
     name: str
-
-    class Config:
-        from_attributes = True
-
-
-class AttributeValueInProduct(BaseModel):
-    id: int
     value: str
-    attribute: AttributeNameInProduct
-
-    class Config:
-        from_attributes = True
-
-
-class ProductAttributeValueItem(BaseModel):
-    attribute_value: AttributeValueInProduct
-
-    class Config:
-        from_attributes = True
 
 
 class ProductResponse(ProductBase):
@@ -76,10 +59,7 @@ class CategoryInProduct(BaseModel):
 
 class ProductWithCategory(ProductResponse):
     category: Optional[CategoryInProduct] = None
-    attribute_values: List[ProductAttributeValueItem] = []
-
-    class Config:
-        from_attributes = True
+    attributes: List[ProductAttribute] = []
 
 
 class PaginatedProductsResponse(BaseModel):
