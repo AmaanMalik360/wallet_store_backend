@@ -6,6 +6,7 @@ from .product import Product
 from .attribute import Attribute, AttributeValue, ProductAttributeValue
 from .category_attribute import CategoryAttribute
 from .cart import Cart, CartItem
+from .address import Address
 from .order import Order, OrderItem, OrderStatus
 from .payment import Payment, PaymentStatus
 from .shipment import Shipment
@@ -19,6 +20,7 @@ from sqlalchemy.orm import relationship
 # Add relationships to User model
 User.cart = relationship("Cart", back_populates="user", uselist=False)
 User.orders = relationship("Order", back_populates="user")
+User.addresses = relationship("Address", back_populates="user", cascade="all, delete-orphan")
 User.user_roles = relationship("UserRole", back_populates="user", cascade="all, delete-orphan")
 
 # Add relationships to Category model
@@ -41,6 +43,7 @@ __all__ = [
     "Order",
     "OrderItem",
     "OrderStatus",
+    "Address",
     "Payment",
     "PaymentStatus",
     "Shipment",

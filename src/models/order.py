@@ -1,4 +1,4 @@
-from sqlalchemy import UUID, ForeignKey, Integer, String, Text, DateTime, Enum
+from sqlalchemy import UUID, ForeignKey, Integer, String, Text, DateTime, Enum, Boolean
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 from sqlalchemy.sql import func
 from .db import Base
@@ -29,16 +29,30 @@ class Order(Base):
         nullable=False
     )
     total_cents: Mapped[int] = mapped_column(
-        Integer, 
+        Integer,
         nullable=False
     )
     status: Mapped[OrderStatus] = mapped_column(
-        Enum(OrderStatus), 
-        nullable=False, 
+        Enum(OrderStatus),
+        nullable=False,
         default=OrderStatus.PENDING_PAYMENT
     )
-    shipping_address: Mapped[str] = mapped_column(
-        Text, 
+    shipping_address_id: Mapped[UUID] = mapped_column(
+        UUID(as_uuid=True),
+        ForeignKey("addresses.id", ondelete="SET NULL"),
+        nullable=True
+    )
+    billing_address_id: Mapped[UUID] = mapped_column(
+        UUID(as_uuid=True),
+        ForeignKey("addresses.id", ondelete="SET NULL"),
+        nullable=True
+    )
+    source: Mapped[str] = mapped_column(
+        String(20),
+        nullable=True
+    )
+    notes: Mapped[str] = mapped_column(
+        Text,
         nullable=True
     )
     created_at: Mapped[DateTime] = mapped_column(
@@ -53,8 +67,18 @@ class Order(Base):
 
     # Relationships
     user: Mapped["User"] = relationship(
-        "User", 
+        "User",
         back_populates="orders"
+    )
+    shipping_address: Mapped["Address"] = relationship(
+        "Address",
+        foreign_keys=[shipping_address_id],
+        lazy="joined"
+    )
+    billing_address: Mapped["Address"] = relationship(
+        "Address",
+        foreign_keys=[billing_address_id],
+        lazy="joined"
     )
     items: Mapped[list["OrderItem"]] = relationship(
         "OrderItem", 

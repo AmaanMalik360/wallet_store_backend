@@ -6,6 +6,8 @@ from src.routes.attributes.controller import router as attributes_router
 from src.routes.attribute_values.controller import router as attribute_values_router
 from src.routes.admin.controller import router as admin_router
 from src.routes.carts.controller import router as cart_router
+from src.routes.orders.controller import router as orders_router
+from src.routes.addresses.controller import router as addresses_router
 
 
 def register_routes(app: FastAPI):
@@ -16,3 +18,5 @@ def register_routes(app: FastAPI):
     app.include_router(attribute_values_router)
     app.include_router(admin_router)
     app.include_router(cart_router)
+    app.include_router(orders_router)
+    app.include_router(addresses_router)
