@@ -3,7 +3,7 @@ from sqlalchemy import UUID, String, Text, Integer, ForeignKey, DateTime, ARRAY
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 from sqlalchemy.sql import func
 from .db import Base
-import uuid
+import uuid6
 
 
 class Product(Base):
@@ -12,7 +12,7 @@ class Product(Base):
     id: Mapped[UUID] = mapped_column(
         UUID(as_uuid=True), 
         primary_key=True, 
-        default=uuid.uuid4
+        default=uuid6.uuid7
     )
     title: Mapped[str] = mapped_column(
         Text, 
