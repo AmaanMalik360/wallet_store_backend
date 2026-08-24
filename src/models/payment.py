@@ -1,4 +1,4 @@
-from sqlalchemy import UUID, ForeignKey, Integer, String, DateTime, Enum
+from sqlalchemy import UUID, CHAR, ForeignKey, Integer, String, DateTime, Enum
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 from sqlalchemy.sql import func
 from .db import Base
@@ -34,9 +34,18 @@ class Payment(Base):
         nullable=True, 
         unique=True
     )
-    amount_cents: Mapped[int] = mapped_column(
+    # amount is in minor units of currency_code (paisa for PKR, cents for USD/EUR).
+    amount: Mapped[int] = mapped_column(
         Integer, 
         nullable=False
+    )
+    # NOTE (future — Stripe/Razorpay): payment gateways require currency on the
+    # payment intent. Pass self.currency_code directly to the gateway API call.
+    currency_code: Mapped[str] = mapped_column(
+        CHAR(3),
+        ForeignKey("currencies.code"),
+        nullable=False,
+        default="PKR",
     )
     status: Mapped[PaymentStatus] = mapped_column(
         Enum(PaymentStatus), 
@@ -59,4 +68,4 @@ class Payment(Base):
     )
 
     def __repr__(self) -> str:
-        return f"<Payment(id={self.id}, order_id={self.order_id}, gateway={self.gateway}, amount_cents={self.amount_cents}, status={self.status.value})>"
+        return f"<Payment(id={self.id}, order_id={self.order_id}, gateway={self.gateway}, amount={self.amount}, currency={self.currency_code}, status={self.status.value})>"

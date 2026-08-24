@@ -8,7 +8,10 @@ from src.routes.models import ApiResponse
 class CartItemResponse(BaseModel):
     product_id: UUID
     title: str
-    price: int
+    # price_amount is in minor units of the default currency (paisa for PKR).
+    # NOTE (future — multi-currency): Add currency_code: str = "PKR" here so
+    # the frontend can call formatPrice(price_amount, currency_code) dynamically.
+    price_amount: int
     image: str
     category_name: Optional[str] = None
     quantity: int

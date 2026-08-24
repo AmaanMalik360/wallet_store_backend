@@ -10,21 +10,24 @@ class ProductBase(BaseModel):
     title: str = Field(..., min_length=1, max_length=500)
     description: Optional[str] = None
     category_id: Optional[int] = None
-    price: int = Field(..., gt=0, description="Price in cents")
     stock_quantity: int = Field(..., ge=0, description="Number of items in stock")
     sku: Optional[str] = None
     images: Optional[List[str]] = Field(default_factory=list, description="List of image URLs")
 
 
 class ProductCreate(ProductBase):
-    pass
+    # price_amount is in minor units of currency_code (paisa for PKR; 1 PKR = 100 paisa).
+    # NOTE (future — multi-currency): Add currency_code: str = "PKR" here when
+    # the storefront lets admins set a price per currency at creation time.
+    price_amount: int = Field(..., gt=0, description="Price in minor units (paisa for PKR)")
 
 
 class ProductUpdate(BaseModel):
     title: Optional[str] = Field(None, min_length=1, max_length=500)
     description: Optional[str] = None
     category_id: Optional[int] = None
-    price: Optional[int] = Field(None, gt=0, description="Price in cents")
+    # price_amount is in minor units (paisa for PKR).
+    price_amount: Optional[int] = Field(None, gt=0, description="Price in minor units (paisa for PKR)")
     stock_quantity: Optional[int] = Field(None, ge=0, description="Number of items in stock")
     sku: Optional[str] = None
     images: Optional[List[str]] = None
@@ -40,6 +43,10 @@ class ProductAttribute(BaseModel):
 
 class ProductResponse(ProductBase):
     id: UUID
+    # price_amount is resolved from the active ProductPrice for the default currency.
+    # NOTE (future — multi-currency): Accept a currency_code query param and pass it
+    # through to resolve_price(). The response would also include currency_code.
+    price_amount: int
     created_at: datetime
     updated_at: datetime
     

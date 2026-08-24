@@ -2,7 +2,9 @@
 from .db import Base, db_manager, get_db
 from .user import User
 from .category import Category
+from .currency import Currency
 from .product import Product
+from .product_price import ProductPrice
 from .attribute import Attribute, AttributeValue, ProductAttributeValue
 from .category_attribute import CategoryAttribute
 from .cart import Cart, CartItem
@@ -33,7 +35,9 @@ __all__ = [
     "get_db",
     "User",
     "Category",
+    "Currency",
     "Product",
+    "ProductPrice",
     "Attribute",
     "AttributeValue", 
     "ProductAttributeValue",

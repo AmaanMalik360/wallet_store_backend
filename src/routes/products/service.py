@@ -1,4 +1,5 @@
 from typing import List, Optional, Dict, Any
+from datetime import datetime, timezone
 from uuid import UUID
 from sqlalchemy.orm import Session, joinedload
 from sqlalchemy import func
@@ -8,10 +9,18 @@ import logging
 from . import models
 from .sku_generator import generate_sku
 from src.models.product import Product
+from src.models.product_price import ProductPrice
 from src.models.category import Category
 from src.models.attribute import ProductAttributeValue, AttributeValue
+from src.services.pricing import _active_price_subquery
 
 logger = logging.getLogger(__name__)
+
+# Default currency used throughout the single-currency MVP.
+# NOTE (future — multi-currency): Accept currency_code as a function parameter
+# (e.g. from an Accept-Currency header) and propagate it to _active_price and
+# _build_product_response instead of using this constant.
+_DEFAULT_CURRENCY = "PKR"
 
 
 def _get_product_orm(db: Session, product_id: UUID) -> Product:
@@ -21,13 +30,32 @@ def _get_product_orm(db: Session, product_id: UUID) -> Product:
     return product
 
 
+def _resolve_active_price(product: Product, currency_code: str = _DEFAULT_CURRENCY) -> int:
+    """
+    Resolve the active price from the eagerly-loaded product_prices relationship.
+    Returns 0 if no active price is found (safe for display; order creation raises
+    instead via resolve_price()).
+    """
+    now = datetime.now(timezone.utc)
+    for pp in product.product_prices:
+        if (
+            pp.is_active
+            and pp.currency_code == currency_code
+            and (pp.valid_from is None or pp.valid_from <= now)
+            and (pp.valid_until is None or pp.valid_until > now)
+        ):
+            return pp.amount
+    return 0
+
+
 def _build_product_response(product: Product) -> models.ProductWithCategory:
+    price_amount = _resolve_active_price(product)
     return models.ProductWithCategory(
         id=product.id,
         title=product.title,
         description=product.description,
         category_id=product.category_id,
-        price=product.price,
+        price_amount=price_amount,
         stock_quantity=product.stock_quantity,
         sku=product.sku,
         images=product.images or [],
@@ -47,18 +75,28 @@ def _build_product_response(product: Product) -> models.ProductWithCategory:
     )
 
 
+def _product_query_base(db: Session):
+    """Base query with all necessary joinedloads."""
+    return db.query(Product).options(
+        joinedload(Product.product_prices),
+        joinedload(Product.category),
+        joinedload(Product.attribute_values)
+        .joinedload(ProductAttributeValue.attribute_value)
+        .joinedload(AttributeValue.attribute)
+    )
+
+
 def create_product(
     db: Session,
     product: models.ProductCreate,
     image_paths: Optional[List[str]] = None,
     attribute_value_ids: Optional[List[int]] = None
-) -> Product:
+) -> models.ProductWithCategory:
     try:
         db_product = Product(
             title=product.title,
             description=product.description,
             category_id=product.category_id,
-            price=product.price,
             stock_quantity=product.stock_quantity,
             sku=product.sku,
             images=image_paths or product.images or []
@@ -75,6 +113,16 @@ def create_product(
                 ).filter(Category.id == product.category_id).first()
             db_product.sku = generate_sku(db, cat)
 
+        # Create the default PKR price row.
+        # NOTE (future — multi-currency): Accept a list of {currency_code, amount}
+        # pairs from the request and insert one ProductPrice per currency here.
+        db.add(ProductPrice(
+            product_id=db_product.id,
+            currency_code=_DEFAULT_CURRENCY,
+            amount=product.price_amount,
+            is_active=True,
+        ))
+
         if attribute_value_ids:
             for av_id in attribute_value_ids:
                 pav = ProductAttributeValue(
@@ -84,15 +132,16 @@ def create_product(
                 db.add(pav)
 
         db.commit()
-        db.refresh(db_product)
 
-        logger.info(f"Created new product: {product.title} with {len(db_product.images)} images")
-        return db_product
+        # Reload with all joins so _build_product_response can resolve price_amount.
+        logger.info(f"Created new product: {product.title} with {len(image_paths or [])} images")
+        return get_product_by_id(db, db_product.id)
 
     except Exception as e:
         logger.error(f"Failed to create product {product.title}. Error: {str(e)}")
         db.rollback()
         raise HTTPException(status_code=500, detail="Failed to create product")
+
 
 def get_products(
     db: Session,
@@ -106,14 +155,9 @@ def get_products(
     search: Optional[str] = None,
     sort_by: Optional[str] = None,
     attribute_value_ids: Optional[List[int]] = None
-) -> Dict[str, Any]:  # data: List[models.ProductWithCategory]
+) -> Dict[str, Any]:
     try:
-        query = db.query(Product).options(
-            joinedload(Product.category),
-            joinedload(Product.attribute_values)
-            .joinedload(ProductAttributeValue.attribute_value)
-            .joinedload(AttributeValue.attribute)
-        )
+        query = _product_query_base(db)
 
         if search:
             query = query.filter(
@@ -136,10 +180,16 @@ def get_products(
                 descendant_ids = Category.get_all_descendant_ids(db, category.id)
                 query = query.filter(Product.category_id.in_([category.id] + descendant_ids))
 
-        if min_price is not None:
-            query = query.filter(Product.price >= min_price)
-        if max_price is not None:
-            query = query.filter(Product.price <= max_price)
+        # Price filtering via correlated subquery against product_prices.
+        # NOTE (future — multi-currency): Pass the request's currency_code to
+        # _active_price_subquery() and min_price/max_price will filter in that currency.
+        if min_price is not None or max_price is not None:
+            price_sq = _active_price_subquery(_DEFAULT_CURRENCY).correlate(Product).scalar_subquery()
+            if min_price is not None:
+                query = query.filter(price_sq >= min_price)
+            if max_price is not None:
+                query = query.filter(price_sq <= max_price)
+
         if in_stock is not None:
             query = query.filter(
                 Product.stock_quantity > 0 if in_stock else Product.stock_quantity == 0
@@ -147,7 +197,6 @@ def get_products(
 
         # Attribute filtering with AND semantics across different attributes
         if attribute_value_ids:
-            # Group attribute value IDs by their attribute_id for proper OR within same attribute, AND across attributes
             value_to_attr = {}
             attr_values = db.query(AttributeValue).filter(
                 AttributeValue.id.in_(attribute_value_ids)
@@ -158,8 +207,6 @@ def get_products(
                     value_to_attr[av.attribute_id] = []
                 value_to_attr[av.attribute_id].append(av.id)
             
-            # For each attribute, product must have at least one of the selected values (OR within attribute)
-            # Across attributes, product must match all (AND across attributes)
             for attr_id, val_ids in value_to_attr.items():
                 query = query.filter(
                     Product.id.in_(
@@ -168,11 +215,13 @@ def get_products(
                     )
                 )
 
-        # Sorting
-        if sort_by == "price-low":
-            query = query.order_by(Product.price.asc())
-        elif sort_by == "price-high":
-            query = query.order_by(Product.price.desc())
+        # Sorting — price sorts use the correlated subquery.
+        if sort_by in ("price-low", "price-high"):
+            price_sq = _active_price_subquery(_DEFAULT_CURRENCY).correlate(Product).scalar_subquery()
+            if sort_by == "price-low":
+                query = query.order_by(price_sq.asc())
+            else:
+                query = query.order_by(price_sq.desc())
         elif sort_by == "newest":
             query = query.order_by(Product.created_at.desc())
         elif sort_by == "name":
@@ -180,9 +229,7 @@ def get_products(
         else:  # featured / default
             query = query.order_by(Product.created_at.desc())
 
-        # Get total count after all filters and sorting, before pagination
         total = query.count()
-
         products = query.offset(skip).limit(limit).all()
         logger.info(f"Retrieved {len(products)} products out of {total} total")
         return {
@@ -196,14 +243,10 @@ def get_products(
         logger.error(f"Failed to retrieve products. Error: {str(e)}")
         raise HTTPException(status_code=500, detail="Failed to retrieve products")
 
+
 def get_product_by_id(db: Session, product_id: UUID) -> models.ProductWithCategory:
-    """Get a specific product by ID with category and flat attributes"""
-    product = db.query(Product).options(
-        joinedload(Product.category),
-        joinedload(Product.attribute_values)
-        .joinedload(ProductAttributeValue.attribute_value)
-        .joinedload(AttributeValue.attribute)
-    ).filter(Product.id == product_id).first()
+    """Get a specific product by ID with category and flat attributes."""
+    product = _product_query_base(db).filter(Product.id == product_id).first()
 
     if not product:
         logger.warning(f"Product {product_id} not found")
@@ -213,20 +256,47 @@ def get_product_by_id(db: Session, product_id: UUID) -> models.ProductWithCatego
     return _build_product_response(product)
 
 
-def update_product(db: Session, product_id: UUID, update_data: dict) -> Product:
+def update_product(db: Session, product_id: UUID, update_data: dict) -> models.ProductWithCategory:
     try:
         product = _get_product_orm(db, product_id)
-        
-        # Update fields based on provided data
+
+        # Handle price_amount separately — it lives in product_prices, not Product.
+        price_amount = update_data.pop("price_amount", None)
+        if price_amount is not None:
+            now = datetime.now(timezone.utc)
+            existing_price = (
+                db.query(ProductPrice)
+                .filter(
+                    ProductPrice.product_id == product_id,
+                    ProductPrice.currency_code == _DEFAULT_CURRENCY,
+                    ProductPrice.is_active == True,  # noqa: E712
+                    ProductPrice.valid_from == None,  # noqa: E711  (default price row)
+                )
+                .first()
+            )
+            if existing_price:
+                # In-place update preserves the audit-free MVP behaviour.
+                # NOTE (future — price history): Set existing_price.is_active=False,
+                # then insert a new row to keep a full price change audit trail.
+                existing_price.amount = price_amount
+            else:
+                db.add(ProductPrice(
+                    product_id=product_id,
+                    currency_code=_DEFAULT_CURRENCY,
+                    amount=price_amount,
+                    is_active=True,
+                ))
+
+        # Update remaining scalar fields on Product.
         for field, value in update_data.items():
             setattr(product, field, value)
-        
+
         db.commit()
-        db.refresh(product)
-        
+
+        # Reload with all joins so _build_product_response can resolve price_amount.
         logger.info(f"Updated product {product_id} with fields: {list(update_data.keys())}")
-        return product
-        
+        return get_product_by_id(db, product_id)
+
     except HTTPException:
         raise
     except Exception as e:
@@ -238,16 +308,14 @@ def update_product(db: Session, product_id: UUID, update_data: dict) -> Product:
 def delete_product(db: Session, product_id: UUID) -> None:
     try:
         product = _get_product_orm(db, product_id)
-        
+
         db.delete(product)
         db.commit()
         logger.info(f"Deleted product {product_id}")
-        
+
     except HTTPException:
         raise
     except Exception as e:
         logger.error(f"Failed to delete product {product_id}. Error: {str(e)}")
         db.rollback()
         raise HTTPException(status_code=500, detail="Failed to delete product")
-
-

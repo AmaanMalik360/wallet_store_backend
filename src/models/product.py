@@ -27,10 +27,9 @@ class Product(Base):
         ForeignKey("categories.id"), 
         nullable=True
     )
-    price: Mapped[int] = mapped_column(
-        Integer, 
-        nullable=False
-    )
+    # price column removed — pricing lives in product_prices table.
+    # NOTE (future — multi-currency): Add more ProductPrice rows per product,
+    # one per currency_code. resolve_price() handles selection by currency.
     stock_quantity: Mapped[int] = mapped_column(
         Integer, 
         nullable=False, 
@@ -61,6 +60,11 @@ class Product(Base):
         "Category", 
         back_populates="products"
     )
+    product_prices: Mapped[list["ProductPrice"]] = relationship(
+        "ProductPrice",
+        back_populates="product",
+        cascade="all, delete-orphan",
+    )
     attribute_values: Mapped[list["ProductAttributeValue"]] = relationship(
         "ProductAttributeValue", 
         back_populates="product",
@@ -76,4 +80,4 @@ class Product(Base):
     )
 
     def __repr__(self) -> str:
-        return f"<Product(id={self.id}, title={self.title[:50]}, price={self.price}), category={self.category}>"
+        return f"<Product(id={self.id}, title={self.title[:50]}), category={self.category}>"

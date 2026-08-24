@@ -18,12 +18,15 @@ class OrderCreate(BaseModel):
     source: str = "whatsapp"
     shipping_address_id: Optional[UUID] = None
     billing_address_id: Optional[UUID] = None
+    # NOTE (future — multi-currency): Add currency_code: str = "PKR" here when
+    # the storefront lets customers choose their checkout currency.
 
 
 class OrderItemResponse(BaseModel):
     product_id: UUID
     title: str
-    price_cents: int
+    # unit_amount is a price snapshot in minor units at time of order creation.
+    unit_amount: int
     quantity: int
     image: Optional[str] = None
 
@@ -34,7 +37,11 @@ class OrderItemResponse(BaseModel):
 class OrderResponse(BaseModel):
     id: UUID
     user_id: UUID
-    total_cents: int
+    # total_amount is in minor units of currency_code (paisa for PKR).
+    total_amount: int
+    # NOTE (future — multi-currency): Surface currency_code in the response so
+    # the frontend can call formatPrice(total_amount, currency_code) dynamically.
+    currency_code: str = "PKR"
     status: str
     source: Optional[str] = None
     notes: Optional[str] = None
@@ -51,7 +58,9 @@ class OrderResponse(BaseModel):
 class OrderListItem(BaseModel):
     id: UUID
     user_id: UUID
-    total_cents: int
+    # total_amount is in minor units of currency_code.
+    total_amount: int
+    currency_code: str = "PKR"
     status: str
     source: Optional[str] = None
     customer_name: Optional[str] = None

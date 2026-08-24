@@ -7,6 +7,7 @@ import logging
 from . import models
 from src.models.cart import Cart, CartItem
 from src.models.product import Product
+from src.services.pricing import resolve_price
 
 logger = logging.getLogger(__name__)
 
@@ -33,17 +34,27 @@ def _load_cart(db: Session, user_id: UUID) -> Cart:
     )
 
 
-def _build_cart_response(cart: Cart) -> models.CartResponse:
+def _build_cart_response(cart: Cart, db: Session) -> models.CartResponse:
     items = []
     for item in cart.items:
         product = item.product
         image = product.images[0] if product.images else ""
         category_name = product.category.name if product.category else None
+        # Resolve price from product_prices table.
+        # NOTE (future — multi-currency): Accept currency_code from the user session
+        # and pass it to resolve_price() here. The cart response would also include
+        # currency_code so the frontend can format prices correctly.
+        try:
+            price_amount = resolve_price(db, product.id)
+        except HTTPException:
+            # Fallback to 0 if no active price found — prevents cart load failure
+            # while the admin hasn't yet set a price for the product.
+            price_amount = 0
         items.append(
             models.CartItemResponse(
                 product_id=product.id,
                 title=product.title,
-                price=product.price,
+                price_amount=price_amount,
                 image=image,
                 category_name=category_name,
                 quantity=item.quantity,
@@ -63,7 +74,7 @@ def get_cart_with_items(db: Session, user_id: UUID) -> models.CartResponse:
             get_or_create_cart(db, user_id)
             db.commit()
             cart = _load_cart(db, user_id)
-        return _build_cart_response(cart)
+        return _build_cart_response(cart, db)
     except HTTPException:
         raise
     except Exception as e:

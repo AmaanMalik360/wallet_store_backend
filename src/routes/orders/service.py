@@ -8,9 +8,15 @@ from src.models.order import Order, OrderItem, OrderStatus
 from src.models.product import Product
 from src.models.shipment import Shipment
 from src.models.user import User
+from src.services.pricing import resolve_price
 from . import models
 
 logger = logging.getLogger(__name__)
+
+# Default currency used throughout the single-currency MVP.
+# NOTE (future — multi-currency): Accept currency_code from the request body
+# (OrderCreate) and pass it through to resolve_price() and the Order row.
+_DEFAULT_CURRENCY = "PKR"
 
 CUSTOMER_VISIBLE_STATUSES = [
     OrderStatus.PAID,
@@ -50,7 +56,7 @@ def _build_order_response(order: Order, db: Session) -> models.OrderResponse:
             models.OrderItemResponse(
                 product_id=item.product_id,
                 title=product.title if product else "Deleted product",
-                price_cents=item.price_cents,
+                unit_amount=item.unit_amount,
                 quantity=item.quantity,
                 image=image,
             )
@@ -58,7 +64,8 @@ def _build_order_response(order: Order, db: Session) -> models.OrderResponse:
     return models.OrderResponse(
         id=order.id,
         user_id=order.user_id,
-        total_cents=order.total_cents,
+        total_amount=order.total_amount,
+        currency_code=order.currency_code,
         status=order.status.value,
         source=order.source,
         notes=order.notes,
@@ -72,25 +79,33 @@ def _build_order_response(order: Order, db: Session) -> models.OrderResponse:
 
 def create_order(db: Session, user_id: UUID, data: models.OrderCreate) -> models.OrderResponse:
     try:
-        total_cents = 0
+        currency_code = _DEFAULT_CURRENCY
+        total_amount = 0
         order_items = []
+
         for item_in in data.items:
             product = db.query(Product).filter(Product.id == item_in.product_id).first()
             if not product:
                 raise HTTPException(status_code=404, detail=f"Product {item_in.product_id} not found")
-            line_total = product.price * item_in.quantity
-            total_cents += line_total
+
+            # resolve_price raises 422 if no active price exists — prevents
+            # zero-value orders slipping through silently.
+            # NOTE (future — multi-currency): Pass currency_code from data.currency_code here.
+            unit_amount = resolve_price(db, item_in.product_id, currency_code)
+            total_amount += unit_amount * item_in.quantity
+
             order_items.append(
                 OrderItem(
                     product_id=item_in.product_id,
                     quantity=item_in.quantity,
-                    price_cents=product.price,
+                    unit_amount=unit_amount,
                 )
             )
 
         order = Order(
             user_id=user_id,
-            total_cents=total_cents,
+            total_amount=total_amount,
+            currency_code=currency_code,
             status=OrderStatus.PENDING_PAYMENT,
             source=data.source,
             shipping_address_id=data.shipping_address_id,
@@ -146,7 +161,8 @@ def _to_list_item(order: Order, db: Session) -> models.OrderListItem:
     return models.OrderListItem(
         id=order.id,
         user_id=order.user_id,
-        total_cents=order.total_cents,
+        total_amount=order.total_amount,
+        currency_code=order.currency_code,
         status=order.status.value,
         source=order.source,
         customer_name=user.name if user else None,
@@ -206,27 +222,29 @@ def admin_update_status(db: Session, order_id: UUID, status: OrderStatus) -> mod
 def admin_replace_items(db: Session, order_id: UUID, data: models.ReplaceOrderItems) -> models.OrderResponse:
     try:
         order = _load_order(db, order_id)
+        currency_code = order.currency_code
 
         db.query(OrderItem).filter(OrderItem.order_id == order_id).delete()
 
-        total_cents = 0
+        total_amount = 0
         new_items = []
         for item_in in data.items:
             product = db.query(Product).filter(Product.id == item_in.product_id).first()
             if not product:
                 raise HTTPException(status_code=404, detail=f"Product {item_in.product_id} not found")
-            total_cents += product.price * item_in.quantity
+            unit_amount = resolve_price(db, item_in.product_id, currency_code)
+            total_amount += unit_amount * item_in.quantity
             new_items.append(
                 OrderItem(
                     order_id=order_id,
                     product_id=item_in.product_id,
                     quantity=item_in.quantity,
-                    price_cents=product.price,
+                    unit_amount=unit_amount,
                 )
             )
 
         db.add_all(new_items)
-        order.total_cents = total_cents
+        order.total_amount = total_amount
         db.commit()
         order = _load_order(db, order_id)
         logger.info(f"Replaced items on order {order_id}")

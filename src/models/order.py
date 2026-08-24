@@ -1,4 +1,4 @@
-from sqlalchemy import UUID, ForeignKey, Integer, String, Text, DateTime, Enum, Boolean
+from sqlalchemy import UUID, CHAR, ForeignKey, Integer, String, Text, DateTime, Enum, Boolean
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 from sqlalchemy.sql import func
 from .db import Base
@@ -28,9 +28,19 @@ class Order(Base):
         ForeignKey("users.id"), 
         nullable=False
     )
-    total_cents: Mapped[int] = mapped_column(
+    # total_amount is in minor units of currency_code (paisa for PKR, cents for USD/EUR).
+    total_amount: Mapped[int] = mapped_column(
         Integer,
         nullable=False
+    )
+    # NOTE (future — multi-currency): When a customer session picks a currency,
+    # pass it to create_order(). resolve_price() already accepts currency_code,
+    # so unit_amount on each OrderItem will be denominated in orders.currency_code.
+    currency_code: Mapped[str] = mapped_column(
+        CHAR(3),
+        ForeignKey("currencies.code"),
+        nullable=False,
+        default="PKR",
     )
     status: Mapped[OrderStatus] = mapped_column(
         Enum(OrderStatus),
@@ -97,7 +107,7 @@ class Order(Base):
     )
 
     def __repr__(self) -> str:
-        return f"<Order(id={self.id}, user_id={self.user_id}, total_cents={self.total_cents}, status={self.status.value})>"
+        return f"<Order(id={self.id}, user_id={self.user_id}, total_amount={self.total_amount}, currency={self.currency_code}, status={self.status.value})>"
 
 
 class OrderItem(Base):
@@ -117,7 +127,9 @@ class OrderItem(Base):
         Integer, 
         nullable=False
     )
-    price_cents: Mapped[int] = mapped_column(
+    # unit_amount is a price snapshot in minor units at the time of order creation.
+    # It always matches the currency of the parent Order (orders.currency_code).
+    unit_amount: Mapped[int] = mapped_column(
         Integer, 
         nullable=False
     )
@@ -133,4 +145,4 @@ class OrderItem(Base):
     )
 
     def __repr__(self) -> str:
-        return f"<OrderItem(order_id={self.order_id}, product_id={self.product_id}, quantity={self.quantity}, price_cents={self.price_cents})>"
+        return f"<OrderItem(order_id={self.order_id}, product_id={self.product_id}, quantity={self.quantity}, unit_amount={self.unit_amount})>"

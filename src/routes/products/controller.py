@@ -18,13 +18,14 @@ router = APIRouter(
 # Initialize image upload middleware for products
 image_upload = ImageUploadMiddleware("public/images/products")
 
-@router.post("/", response_model=models.ProductResponseWrapper, status_code=status.HTTP_201_CREATED)
+@router.post("/", response_model=models.ProductWithCategoryResponseWrapper, status_code=status.HTTP_201_CREATED)
 async def create_product(
     db: DbSession,
     title: str = Form(...),
     description: Optional[str] = Form(None),
     category_id: Optional[int] = Form(None),
-    price: int = Form(...),
+    # price_amount is in minor units of the default currency (paisa for PKR).
+    price_amount: int = Form(...),
     stock_quantity: int = Form(...),
     sku: Optional[str] = Form(None),
     attribute_value_ids: Optional[List[int]] = Form(None),
@@ -37,7 +38,7 @@ async def create_product(
         title: Product title
         description: Product description
         category_id: Category ID
-        price: Price in cents
+        price_amount: Price in minor units (paisa for PKR)
         stock_quantity: Number of items in stock
         images: Optional list of image files
     """
@@ -51,7 +52,7 @@ async def create_product(
             title=title,
             description=description,
             category_id=category_id,
-            price=price,
+            price_amount=price_amount,
             stock_quantity=stock_quantity,
             sku=sku,
             images=image_paths
@@ -122,14 +123,15 @@ def get_product(product_id: UUID, db: DbSession):
         data=product
     )
 
-@router.patch("/{product_id}", response_model=models.ProductResponseWrapper)
+@router.patch("/{product_id}", response_model=models.ProductWithCategoryResponseWrapper)
 async def update_product(
     product_id: UUID,
     db: DbSession,
     title: Optional[str] = Form(None),
     description: Optional[str] = Form(None),
     category_id: Optional[int] = Form(None),
-    price: Optional[int] = Form(None),
+    # price_amount is in minor units of the default currency (paisa for PKR).
+    price_amount: Optional[int] = Form(None),
     stock_quantity: Optional[int] = Form(None),
     sku: Optional[str] = Form(None),
     images: Optional[str] = Form(None, description="JSON string of existing image URLs"),
@@ -161,8 +163,8 @@ async def update_product(
             update_data['description'] = description
         if category_id is not None:
             update_data['category_id'] = category_id
-        if price is not None:
-            update_data['price'] = price
+        if price_amount is not None:
+            update_data['price_amount'] = price_amount
         if stock_quantity is not None:
             update_data['stock_quantity'] = stock_quantity
         if sku is not None:
