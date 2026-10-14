@@ -7,7 +7,7 @@ import logging
 from . import models
 from src.models.cart import Cart, CartItem
 from src.models.product import Product
-from src.services.pricing import resolve_price
+from src.services.pricing import resolve_prices
 
 logger = logging.getLogger(__name__)
 
@@ -35,21 +35,19 @@ def _load_cart(db: Session, user_id: UUID) -> Cart:
 
 
 def _build_cart_response(cart: Cart, db: Session) -> models.CartResponse:
+    # Batch-resolve all item prices in one query.
+    # NOTE (future — multi-currency): Accept currency_code from the user session
+    # and pass it to resolve_prices() here. The cart response would also include
+    # currency_code so the frontend can format prices correctly.
+    prices = resolve_prices(db, [item.product.id for item in cart.items])
     items = []
     for item in cart.items:
         product = item.product
         image = product.images[0] if product.images else ""
         category_name = product.category.name if product.category else None
-        # Resolve price from product_prices table.
-        # NOTE (future — multi-currency): Accept currency_code from the user session
-        # and pass it to resolve_price() here. The cart response would also include
-        # currency_code so the frontend can format prices correctly.
-        try:
-            price_amount = resolve_price(db, product.id)
-        except HTTPException:
-            # Fallback to 0 if no active price found — prevents cart load failure
-            # while the admin hasn't yet set a price for the product.
-            price_amount = 0
+        # Fallback to 0 if no active price found — prevents cart load failure
+        # while the admin hasn't yet set a price for the product.
+        price_amount = prices.get(product.id, 0)
         items.append(
             models.CartItemResponse(
                 product_id=product.id,

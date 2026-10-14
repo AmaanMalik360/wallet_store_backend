@@ -250,9 +250,10 @@ Only after step 3 does the attribute appear as filterable for that category (and
 **Price book architecture:**
 
 - `currencies`: `code` CHAR(3) PK, `decimal_places`, `is_default` (`models/currency.py`).
-- `product_prices`: `id` (uuid7), `product_id`, `currency_code`, `amount` (minor units), `is_active`, `valid_from` (NULL = permanent), `valid_until` (NULL = no expiry) (`models/product_price.py`). Partial unique index `uq_product_price_default` on `(product_id, currency_code) WHERE valid_from IS NULL AND is_active = TRUE`.
-- **`resolve_price(db, product_id, currency_code="PKR")`** (`src/services/pricing.py`) — the single source of truth for an active price: `is_active = True`, `currency_code` matches, `valid_from` NULL or `<= now()`, `valid_until` NULL or `> now()`; prefers scheduled (non-NULL `valid_from`) over permanent pricing for sale pricing. Raises HTTP 422 if no active price exists. `_active_price_subquery()` is a correlated scalar subquery used for price-based sort/filter.
-- Integration: `CartItemResponse.price_amount`, `OrderItem.unit_amount`, `Order.total_amount` are all resolved/computed via `resolve_price()`, never stored redundantly.
+- `product_prices`: `id` (uuid7), `product_id`, `currency_code`, `amount` (minor units), `is_active`, `valid_from` (NULL = permanent), `valid_until` (NULL = no expiry) (`models/product_price.py`). Partial unique index `uq_product_price_default` on `(product_id, currency_code) WHERE valid_from IS NULL AND is_active = TRUE` — enforces at most one **permanent** active price per product+currency while letting scheduled prices (`valid_from` set) coexist alongside it. It is a data-integrity constraint, NOT the lookup index used by price resolution (that is `ix_product_prices_lookup`).
+- **`resolve_prices(db, product_ids, currency_code="PKR")`** (`src/services/pricing.py`) — batch resolver: one `DISTINCT ON (product_id)` query returns `{product_id: amount}` for all products with an active price. Products without an active price are **absent from the dict** — callers enforce their own missing-price policy (orders raise 422, cart falls back to 0). Use this whenever prices are needed for more than one product; never call `resolve_price()` in a loop.
+- **`resolve_price(db, product_id, currency_code="PKR")`** — thin wrapper over `resolve_prices()` that raises HTTP 422 when no active price exists. Both share the same selection logic: `is_active = True`, `currency_code` matches, `valid_from` NULL or `<= now()`, `valid_until` NULL or `> now()`; prefers scheduled (non-NULL `valid_from`) over permanent pricing. `_active_price_subquery()` is a correlated scalar subquery used for price-based sort/filter on product listings.
+- Integration: `CartItemResponse.price_amount` (batch `resolve_prices()`), `OrderItem.unit_amount`, `Order.total_amount` are all resolved/computed via the pricing service, never stored redundantly.
 
 **Response shapes:**
 
@@ -278,7 +279,7 @@ PaginatedProductsResponse: { data: List[ProductWithCategory], total, skip, limit
 **Service functions (`routes/carts/service.py`):**
 
 - `get_or_create_cart(db, user_id)` — fetch or create cart by `user_id`
-- `get_cart_with_items(db, user_id)` — joins `Cart → CartItem → Product → Category`, resolves price via `resolve_price()`, returns `CartResponse`
+- `get_cart_with_items(db, user_id)` — joins `Cart → CartItem → Product → Category`, resolves all item prices in ONE `resolve_prices()` query, returns `CartResponse`
 - `add_or_update_item(db, user_id, product_id, quantity)` — upsert item; validates stock
 - `update_item_quantity(db, user_id, product_id, quantity)` — absolute set; `quantity=0` → delete row
 - `remove_item(db, user_id, product_id)` — delete `CartItem`; 404 if not found
@@ -308,8 +309,10 @@ UpdateItemRequest: { quantity: int (>=1) }
 SyncCartRequest: { items: list[AddItemRequest] }
 ```
 
+**Invariants:** `carts.user_id` is `UNIQUE` — exactly one cart per user (`User.cart` is `uselist=False`); a race between two cart-creation requests is stopped at the DB level, not just by `.first()`. `user_id` FK uses `ondelete="CASCADE"` — deleting a user (e.g. expired guest cleanup) deletes the cart and, via `cart_items` cascade, its items.
+
 **Interdependencies:**
-- **users** — cart is keyed by `user_id`, created alongside the guest user; see the `users` module note on why guest→registered conversion must preserve `user_id`.
+- **users** — cart is keyed by `user_id`, created alongside the guest user; see the `users` module note on why guest→registered conversion must preserve `user_id`. Guest rows accumulate (every WhatsApp checkout creates one); `ix_users_guest_expiry` exists to support a future `WHERE is_guest AND guest_expires_at < now()` cleanup — with CASCADE on `carts.user_id`, deleting the guest row cleans up cart + items automatically.
 - **products & pricing** — cart item prices are resolved, not stored (see above).
 - **orders** — `replace_cart` is invoked at checkout initiation; order creation reads the current cart's items to build `order_items`.
 
@@ -326,7 +329,7 @@ SyncCartRequest: { items: list[AddItemRequest] }
 
 **Customer endpoints (require `CurrentUser`):**
 
-- `POST /orders` — create order from cart/items; `source` defaults to `"whatsapp"`; computes `total_amount` server-side via `resolve_price()` per item.
+- `POST /orders` — create order from cart/items; `source` defaults to `"whatsapp"`; computes `total_amount` server-side via one batch `resolve_prices()` call.
 - `GET /orders/mine` — list orders visible to customer (paid, processing, shipped, delivered, cancelled).
 - `GET /orders/mine/{order_id}` — get single customer order.
 
@@ -339,7 +342,9 @@ SyncCartRequest: { items: list[AddItemRequest] }
 - `POST /orders/{order_id}/shipment` — upsert shipment.
 - `DELETE /orders/{order_id}` — delete order.
 
-**Pricing:** order creation calls `resolve_price(db, product_id, currency_code)` (`src/services/pricing.py`). Client-submitted prices are never trusted — `unit_amount`/`total_amount` are always computed server-side.
+**Pricing:** order creation calls `resolve_prices(db, product_ids, currency_code)` (`src/services/pricing.py`) — a single batch query for all line items, then each item's `unit_amount` is looked up from the result dict. A product missing an active price raises 422 (zero-value orders must be impossible). Client-submitted prices are never trusted — `unit_amount`/`total_amount` are always computed server-side.
+
+**Query loading:** `OrderItem.product` is eager-loaded (`joinedload`) in `_load_order()`, `get_my_orders()`, and `admin_list_orders()` — `_build_order_response()`/`_to_list_item()` read `item.product` directly and must never re-query `Product` per item (N+1 regression).
 
 **Address endpoints:** `GET /addresses` (list), `POST /addresses` (create), `DELETE /addresses/{id}` (delete — **blocked** if referenced by an order; application-level check, not a DB constraint).
 

@@ -13,10 +13,14 @@ class Cart(Base):
         primary_key=True, 
         default=uuid6.uuid7
     )
+    # One cart per user (User.cart is uselist=False). CASCADE removes the cart
+    # (and its items via cart_items cascade) when the owning user is deleted —
+    # e.g. expired guest cleanup.
     user_id: Mapped[UUID] = mapped_column(
-        UUID(as_uuid=True), 
-        ForeignKey("users.id", ondelete="SET NULL"), 
-        nullable=True
+        UUID(as_uuid=True),
+        ForeignKey("users.id", ondelete="CASCADE"),
+        nullable=True,
+        unique=True
     )
     created_at: Mapped[DateTime] = mapped_column(
         DateTime(timezone=True), 

@@ -26,7 +26,6 @@ NOTE (future — caching):
 """
 
 from datetime import datetime, timezone
-from typing import Optional
 from uuid import UUID
 
 from sqlalchemy import select, and_, or_
@@ -36,34 +35,36 @@ from fastapi import HTTPException
 from src.models.product_price import ProductPrice
 
 
-def resolve_price(
+def resolve_prices(
     db: Session,
-    product_id: UUID,
+    product_ids: list[UUID],
     currency_code: str = "PKR",
-) -> int:
+) -> dict[UUID, int]:
     """
-    Return the active price (in minor units) for *product_id* denominated in
-    *currency_code*.
+    Batch version of resolve_price(): resolves the active price for many
+    products in ONE query. Returns {product_id: amount} for products that
+    have an active price; missing products are simply absent from the dict —
+    callers decide the policy (orders raise 422, cart falls back to 0).
 
-    Selection logic (mirrors the partial unique index logic):
+    Selection logic (identical to resolve_price()):
       1. is_active = True
       2. currency_code matches
       3. valid_from is NULL  OR  valid_from <= now()      (started)
       4. valid_until is NULL OR  valid_until > now()      (not expired)
       5. Among multiple matching rows (e.g. a scheduled row + permanent row),
          prefer the row with a non-NULL valid_from (scheduled/specific price).
-
-    Raises:
-        HTTPException 422 — no active price found; caller should not silently
-        return 0 because that would silently create zero-value orders.
+         Implemented via PostgreSQL DISTINCT ON (product_id).
     """
+    if not product_ids:
+        return {}
+
     now = datetime.now(timezone.utc)
 
     stmt = (
         select(ProductPrice)
         .where(
             and_(
-                ProductPrice.product_id == product_id,
+                ProductPrice.product_id.in_(product_ids),
                 ProductPrice.currency_code == currency_code,
                 ProductPrice.is_active == True,  # noqa: E712
                 or_(
@@ -76,16 +77,35 @@ def resolve_price(
                 ),
             )
         )
-        # Prefer scheduled (non-NULL valid_from) over permanent (NULL valid_from)
-        # so a sale price takes precedence when both exist in the window.
-        # NOTE (future — sale pricing): This ordering is intentional; permanent
-        # prices act as a fallback when no scheduled row is active.
-        .order_by(ProductPrice.valid_from.desc().nullslast())
-        .limit(1)
+        # DISTINCT ON requires ORDER BY to lead with the distinct column.
+        # valid_from DESC NULLS LAST picks the scheduled row over the
+        # permanent row when both are active in the window.
+        .order_by(
+            ProductPrice.product_id,
+            ProductPrice.valid_from.desc().nullslast(),
+        )
+        .distinct(ProductPrice.product_id)
     )
 
-    row: Optional[ProductPrice] = db.scalars(stmt).first()
-    if row is None:
+    return {row.product_id: row.amount for row in db.scalars(stmt).all()}
+
+
+def resolve_price(
+    db: Session,
+    product_id: UUID,
+    currency_code: str = "PKR",
+) -> int:
+    """
+    Return the active price (in minor units) for *product_id* denominated in
+    *currency_code*. Delegates to resolve_prices() so the selection logic
+    lives in exactly one place.
+
+    Raises:
+        HTTPException 422 — no active price found; caller should not silently
+        return 0 because that would silently create zero-value orders.
+    """
+    amount = resolve_prices(db, [product_id], currency_code).get(product_id)
+    if amount is None:
         raise HTTPException(
             status_code=422,
             detail=(
@@ -93,7 +113,7 @@ def resolve_price(
                 "Ensure a ProductPrice row exists before placing orders."
             ),
         )
-    return row.amount
+    return amount
 
 
 def _active_price_subquery(currency_code: str = "PKR"):

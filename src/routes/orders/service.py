@@ -8,7 +8,7 @@ from src.models.order import Order, OrderItem, OrderStatus
 from src.models.product import Product
 from src.models.shipment import Shipment
 from src.models.user import User
-from src.services.pricing import resolve_price
+from src.services.pricing import resolve_prices
 from . import models
 
 logger = logging.getLogger(__name__)
@@ -31,7 +31,7 @@ def _load_order(db: Session, order_id: UUID) -> Order:
     order = (
         db.query(Order)
         .options(
-            joinedload(Order.items),
+            joinedload(Order.items).joinedload(OrderItem.product),
             joinedload(Order.shipping_address),
             joinedload(Order.billing_address),
             joinedload(Order.user),
@@ -45,13 +45,11 @@ def _load_order(db: Session, order_id: UUID) -> Order:
     return order
 
 
-def _build_order_response(order: Order, db: Session) -> models.OrderResponse:
+def _build_order_response(order: Order) -> models.OrderResponse:
     items_out = []
     for item in order.items:
-        product = db.query(Product).filter(Product.id == item.product_id).first()
-        image = None
-        if product and product.images:
-            image = product.images[0]
+        product = item.product
+        image = product.images[0] if product and product.images else None
         items_out.append(
             models.OrderItemResponse(
                 product_id=item.product_id,
@@ -83,15 +81,31 @@ def create_order(db: Session, user_id: UUID, data: models.OrderCreate) -> models
         total_amount = 0
         order_items = []
 
+        # Batch-fetch products and prices — one query each instead of two
+        # queries per line item.
+        # NOTE (future — multi-currency): Pass currency_code from data.currency_code here.
+        product_ids = [item.product_id for item in data.items]
+        products = {
+            p.id: p
+            for p in db.query(Product).filter(Product.id.in_(product_ids)).all()
+        }
+        prices = resolve_prices(db, product_ids, currency_code)
+
         for item_in in data.items:
-            product = db.query(Product).filter(Product.id == item_in.product_id).first()
-            if not product:
+            if item_in.product_id not in products:
                 raise HTTPException(status_code=404, detail=f"Product {item_in.product_id} not found")
 
-            # resolve_price raises 422 if no active price exists — prevents
-            # zero-value orders slipping through silently.
-            # NOTE (future — multi-currency): Pass currency_code from data.currency_code here.
-            unit_amount = resolve_price(db, item_in.product_id, currency_code)
+            # A missing price raises 422 — prevents zero-value orders
+            # slipping through silently.
+            unit_amount = prices.get(item_in.product_id)
+            if unit_amount is None:
+                raise HTTPException(
+                    status_code=422,
+                    detail=(
+                        f"No active {currency_code} price found for product {item_in.product_id}. "
+                        "Ensure a ProductPrice row exists before placing orders."
+                    ),
+                )
             total_amount += unit_amount * item_in.quantity
 
             order_items.append(
@@ -121,7 +135,7 @@ def create_order(db: Session, user_id: UUID, data: models.OrderCreate) -> models
 
         order = _load_order(db, order.id)
         logger.info(f"Created order {order.id} for user {user_id}")
-        return _build_order_response(order, db)
+        return _build_order_response(order)
 
     except HTTPException:
         raise
@@ -134,12 +148,15 @@ def create_order(db: Session, user_id: UUID, data: models.OrderCreate) -> models
 def get_my_orders(db: Session, user_id: UUID) -> list[models.OrderListItem]:
     orders = (
         db.query(Order)
-        .options(joinedload(Order.items), joinedload(Order.user))
+        .options(
+            joinedload(Order.items).joinedload(OrderItem.product),
+            joinedload(Order.user),
+        )
         .filter(Order.user_id == user_id, Order.status.in_(CUSTOMER_VISIBLE_STATUSES))
         .order_by(Order.created_at.desc())
         .all()
     )
-    return [_to_list_item(o, db) for o in orders]
+    return [_to_list_item(o) for o in orders]
 
 
 def get_my_order(db: Session, user_id: UUID, order_id: UUID) -> models.OrderResponse:
@@ -148,16 +165,15 @@ def get_my_order(db: Session, user_id: UUID, order_id: UUID) -> models.OrderResp
         raise HTTPException(status_code=404, detail="Order not found")
     if order.status not in CUSTOMER_VISIBLE_STATUSES:
         raise HTTPException(status_code=404, detail="Order not found")
-    return _build_order_response(order, db)
+    return _build_order_response(order)
 
 
-def _to_list_item(order: Order, db: Session) -> models.OrderListItem:
+def _to_list_item(order: Order) -> models.OrderListItem:
     user = order.user
     first_item = order.items[0] if order.items else None
     first_title = None
     if first_item:
-        p = db.query(Product).filter(Product.id == first_item.product_id).first()
-        first_title = p.title if p else "Deleted product"
+        first_title = first_item.product.title if first_item.product else "Deleted product"
     return models.OrderListItem(
         id=order.id,
         user_id=order.user_id,
@@ -180,7 +196,10 @@ def admin_list_orders(
     skip: int = 0,
     limit: int = 50,
 ) -> models.PaginatedOrdersResponse:
-    query = db.query(Order).options(joinedload(Order.items), joinedload(Order.user))
+    query = db.query(Order).options(
+        joinedload(Order.items).joinedload(OrderItem.product),
+        joinedload(Order.user),
+    )
 
     if status:
         try:
@@ -198,7 +217,7 @@ def admin_list_orders(
     orders = query.order_by(Order.created_at.desc()).offset(skip).limit(limit).all()
 
     return models.PaginatedOrdersResponse(
-        data=[_to_list_item(o, db) for o in orders],
+        data=[_to_list_item(o) for o in orders],
         total=total,
         skip=skip,
         limit=limit,
@@ -207,7 +226,7 @@ def admin_list_orders(
 
 def admin_get_order(db: Session, order_id: UUID) -> models.OrderResponse:
     order = _load_order(db, order_id)
-    return _build_order_response(order, db)
+    return _build_order_response(order)
 
 
 def admin_update_status(db: Session, order_id: UUID, status: OrderStatus) -> models.OrderResponse:
@@ -216,7 +235,7 @@ def admin_update_status(db: Session, order_id: UUID, status: OrderStatus) -> mod
     db.commit()
     order = _load_order(db, order_id)
     logger.info(f"Updated order {order_id} status to {status.value}")
-    return _build_order_response(order, db)
+    return _build_order_response(order)
 
 
 def admin_replace_items(db: Session, order_id: UUID, data: models.ReplaceOrderItems) -> models.OrderResponse:
@@ -228,11 +247,26 @@ def admin_replace_items(db: Session, order_id: UUID, data: models.ReplaceOrderIt
 
         total_amount = 0
         new_items = []
+
+        product_ids = [item.product_id for item in data.items]
+        products = {
+            p.id: p
+            for p in db.query(Product).filter(Product.id.in_(product_ids)).all()
+        }
+        prices = resolve_prices(db, product_ids, currency_code)
+
         for item_in in data.items:
-            product = db.query(Product).filter(Product.id == item_in.product_id).first()
-            if not product:
+            if item_in.product_id not in products:
                 raise HTTPException(status_code=404, detail=f"Product {item_in.product_id} not found")
-            unit_amount = resolve_price(db, item_in.product_id, currency_code)
+            unit_amount = prices.get(item_in.product_id)
+            if unit_amount is None:
+                raise HTTPException(
+                    status_code=422,
+                    detail=(
+                        f"No active {currency_code} price found for product {item_in.product_id}. "
+                        "Ensure a ProductPrice row exists before placing orders."
+                    ),
+                )
             total_amount += unit_amount * item_in.quantity
             new_items.append(
                 OrderItem(
@@ -248,7 +282,7 @@ def admin_replace_items(db: Session, order_id: UUID, data: models.ReplaceOrderIt
         db.commit()
         order = _load_order(db, order_id)
         logger.info(f"Replaced items on order {order_id}")
-        return _build_order_response(order, db)
+        return _build_order_response(order)
 
     except HTTPException:
         raise
@@ -266,7 +300,7 @@ def admin_update_meta(db: Session, order_id: UUID, data: models.UpdateOrderMeta)
     db.commit()
     order = _load_order(db, order_id)
     logger.info(f"Updated meta on order {order_id}")
-    return _build_order_response(order, db)
+    return _build_order_response(order)
 
 
 def admin_upsert_shipment(db: Session, order_id: UUID, data: models.UpsertShipment) -> models.OrderResponse:
@@ -293,7 +327,7 @@ def admin_upsert_shipment(db: Session, order_id: UUID, data: models.UpsertShipme
         db.commit()
         order = _load_order(db, order_id)
         logger.info(f"Upserted shipment on order {order_id}")
-        return _build_order_response(order, db)
+        return _build_order_response(order)
 
     except HTTPException:
         raise
