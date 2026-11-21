@@ -13,43 +13,54 @@ class CategorySeeder(BaseSeeder):
         # Define categories structure
         categories_data = [
             {
-                "name": "wallets",
+                "name": "fashion",
                 "children": [
-                    "bi fold",
-                    "slim wallets",
-                    "rfid wallets",
-                    "long wallets",
-                    "card holders"
-                ]
-            },
-            {
-                "name": "bags",
-                "children": [
-                    "travel"
-                ]
-            },
-            {
-                "name": "jackets",
-                "children": []  # No subcategories
-            },
-            {
-                "name": "accessories",
-                "children": [
-                    "keychains"
+                    {
+                        "name": "wallets",
+                        "children": [
+                            "bi fold",
+                            "slim wallets",
+                            "rfid wallets",
+                            "long wallets",
+                            "card holders"
+                        ]
+                    },
+                    {
+                        "name": "bags",
+                        "children": [
+                            "travel"
+                        ]
+                    },
+                    {
+                        "name": "jackets",
+                        "children": []  # No subcategories
+                    },
+                    {
+                        "name": "accessories",
+                        "children": [
+                            "keychains"
+                        ]
+                    }
                 ]
             }
         ]
         
         # Create categories recursively
-        for parent_data in categories_data:
-            parent = Category.create(self.db, parent_data["name"])
-            
-            # Create children
-            for child_name in parent_data["children"]:
-                Category.create(self.db, child_name, parent.id)
+        for category_data in categories_data:
+            self._create_category(category_data)
         
         self.db.commit()
         print(f"✅ Categories seeded successfully!")
+    
+    def _create_category(self, category_data: dict, parent_id: int = None):
+        """Recursively create a category and its children"""
+        category = Category.create(self.db, category_data["name"], parent_id)
+        
+        for child in category_data.get("children", []):
+            if isinstance(child, dict):
+                self._create_category(child, category.id)
+            else:
+                Category.create(self.db, child, category.id)
     
     def clear(self):
         """Clear existing categories"""
