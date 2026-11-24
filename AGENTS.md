@@ -1,4 +1,4 @@
-# Backend — Scale & Sinew (FastAPI)
+# Backend — Scales & Sinew (FastAPI)
 
 ## Role
 
